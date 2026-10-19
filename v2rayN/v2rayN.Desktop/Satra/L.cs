@@ -96,6 +96,16 @@ public static class L
         ["exceptions_hint"] = "One domain per line. Subdomains are included.",
         ["kill_switch"] = "Kill switch",
         ["kill_switch_d"] = "If the VPN drops unexpectedly, block internet instead of falling back to your real connection",
+        ["lan_share"] = "Share VPN on LAN / hotspot",
+        ["lan_share_d"] = "Let phones and PCs on your Wi-Fi or hotspot use this VPN (password protected)",
+        ["lan_details"] = "Connection details",
+        ["lan_how"] = "On the other device, set a SOCKS5 or HTTP proxy with these details, or scan the QR code.",
+        ["lan_address"] = "Address",
+        ["lan_port"] = "Port",
+        ["lan_user"] = "Username",
+        ["lan_pass"] = "Password",
+        ["lan_hotspot"] = "Turn on Mobile Hotspot",
+        ["lan_note"] = "Your firewall may ask to allow SatraN on private networks.",
     };
 
     private static readonly Dictionary<string, string> Fa = new()
@@ -178,6 +188,16 @@ public static class L
         ["exceptions_hint"] = "هر خط یک دامنه. زیردامنه‌ها هم شامل می‌شوند.",
         ["kill_switch"] = "کیل‌سوییچ",
         ["kill_switch_d"] = "اگر VPN ناگهان قطع شد، اینترنت قطع شود تا آی‌پی واقعی لو نرود",
+        ["lan_share"] = "اشتراک VPN در شبکه / هات‌اسپات",
+        ["lan_share_d"] = "گوشی‌ها و کامپیوترهای روی وای‌فای یا هات‌اسپات شما از این VPN استفاده کنند (با رمز)",
+        ["lan_details"] = "مشخصات اتصال",
+        ["lan_how"] = "روی دستگاه دیگر، پراکسی SOCKS5 یا HTTP را با این مشخصات تنظیم کنید یا QR را اسکن کنید.",
+        ["lan_address"] = "آدرس",
+        ["lan_port"] = "پورت",
+        ["lan_user"] = "نام کاربری",
+        ["lan_pass"] = "رمز عبور",
+        ["lan_hotspot"] = "روشن کردن هات‌اسپات ویندوز",
+        ["lan_note"] = "ممکن است فایروال برای اجازه به SatraN در شبکه خصوصی سؤال کند.",
     };
 
     private static readonly Dictionary<string, string> Ru = new()
@@ -260,5 +280,15 @@ public static class L
         ["exceptions_hint"] = "Один домен в строке. Поддомены включены.",
         ["kill_switch"] = "Kill switch",
         ["kill_switch_d"] = "Если VPN неожиданно отключится, блокировать интернет вместо прямого соединения",
+        ["lan_share"] = "Раздать VPN по LAN / точке доступа",
+        ["lan_share_d"] = "Телефоны и ПК в вашей Wi-Fi сети или точке доступа смогут пользоваться VPN (с паролем)",
+        ["lan_details"] = "Данные для подключения",
+        ["lan_how"] = "На другом устройстве укажите SOCKS5 или HTTP прокси с этими данными или отсканируйте QR.",
+        ["lan_address"] = "Адрес",
+        ["lan_port"] = "Порт",
+        ["lan_user"] = "Логин",
+        ["lan_pass"] = "Пароль",
+        ["lan_hotspot"] = "Включить мобильный хот-спот",
+        ["lan_note"] = "Брандмауэр может спросить разрешение для SatraN в частной сети.",
     };
 }

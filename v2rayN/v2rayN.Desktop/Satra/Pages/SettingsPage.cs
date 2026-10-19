@@ -69,6 +69,14 @@ public class SettingsPage : IPage
             Ui.ListRow(L.S("exceptions"), L.F("exceptions_d", st.ViaVpn.Count, st.Direct.Count), null, ExceptionsSheet, "⇄"),
             Ui.ListRow(L.S("kill_switch"), L.S("kill_switch_d"), Ui.Switch(st.KillSwitch, v => { st.KillSwitch = v; SatraState.Save(); }))));
 
+        // share the VPN with phones/PCs on the same Wi-Fi or hotspot (separate password-protected port)
+        var ib = Cfg.Inbound.First();
+        var lanOn = ib.AllowLANConn && ib.NewPort4LAN;
+        _body.Children.Add(Ui.Section(L.S("lan_share")));
+        var lanRows = new List<Control> { Ui.ListRow(L.S("lan_share"), L.S("lan_share_d"), Ui.Switch(lanOn, v => _ = SetLanAsync(v))) };
+        if (lanOn) lanRows.Add(Ui.ListRow(L.S("lan_details"), $"{LanIp()}:{AppManager.Instance.GetLocalPort(EInboundProtocol.socks3)}", null, LanSheet, "⇄"));
+        _body.Children.Add(Ui.Group(lanRows.ToArray()));
+
         // general
         _body.Children.Add(Ui.Section(L.S("settings")));
         var langs = new[] { "en", "fa", "ru" };
@@ -141,5 +149,68 @@ public class SettingsPage : IPage
             Refresh();
         });
         close = SatraShell.I.Sheet(L.S("exceptions"), Ui.V(10, Ui.Section(L.S("always_vpn")), via, Ui.Section(L.S("always_direct")), dir, Ui.Caption(L.S("exceptions_hint"), P.Text3), save), 480);
+    }
+
+    public static string LanIp()
+    {
+        try
+        {
+            foreach (var ni in System.Net.NetworkInformation.NetworkInterface.GetAllNetworkInterfaces())
+            {
+                if (ni.OperationalStatus != System.Net.NetworkInformation.OperationalStatus.Up || ni.NetworkInterfaceType == System.Net.NetworkInformation.NetworkInterfaceType.Loopback) continue;
+                if (ni.Name.Contains("tun", StringComparison.OrdinalIgnoreCase) || ni.Name.StartsWith("singbox")) continue;
+                foreach (var a in ni.GetIPProperties().UnicastAddresses)
+                {
+                    var ip = a.Address.ToString();
+                    if (a.Address.AddressFamily == System.Net.Sockets.AddressFamily.InterNetwork && (ip.StartsWith("192.168.") || ip.StartsWith("10.") || ip.StartsWith("172."))) return ip;
+                }
+            }
+        }
+        catch { }
+        return "0.0.0.0";
+    }
+
+    private async Task SetLanAsync(bool on)
+    {
+        var ib = Cfg.Inbound.First();
+        ib.AllowLANConn = on;
+        ib.NewPort4LAN = on;
+        if (on && (string.IsNullOrEmpty(ib.User) || string.IsNullOrEmpty(ib.Pass)))
+        {
+            ib.User = "satra";
+            ib.Pass = Convert.ToBase64String(System.Security.Cryptography.RandomNumberGenerator.GetBytes(9)).Replace('+', 'x').Replace('/', 'y');
+        }
+        await ConfigHandler.SaveConfig(Cfg);
+        await SatraCore.I.Main.Reload();
+        Refresh();
+        if (on) LanSheet();
+    }
+
+    private void LanSheet()
+    {
+        var ib = Cfg.Inbound.First();
+        var ip = LanIp();
+        var port = AppManager.Instance.GetLocalPort(EInboundProtocol.socks3);
+        var url = $"socks5://{ib.User}:{ib.Pass}@{ip}:{port}";
+        Control Field(string label, string value) => Ui.Row(Ui.V(2, Ui.Section(label), Ui.T(Ui.Ltr(value), 14, FontWeight.SemiBold)), Ui.IconBtn("⧉", () => _ = SatraShell.I.Copy(value), L.S("copied"), P.Text2, 14));
+        var kids = new List<Control>
+        {
+            Ui.Caption(L.S("lan_how")),
+            Field(L.S("lan_address"), ip), Field(L.S("lan_port"), $"{port}  (SOCKS5 + HTTP)"), Field(L.S("lan_user"), ib.User), Field(L.S("lan_pass"), ib.Pass),
+        };
+        try
+        {
+            var png = QRCodeUtils.GenQRCode(url);
+            if (png != null)
+            {
+                var img = new Image { Source = new Avalonia.Media.Imaging.Bitmap(new MemoryStream(png)), Width = 180, Height = 180, HorizontalAlignment = HorizontalAlignment.Center };
+                kids.Insert(1, new Border { Background = Brushes.White, CornerRadius = Ui.RCtl, Padding = new Thickness(8), HorizontalAlignment = HorizontalAlignment.Center, Child = img });
+            }
+        }
+        catch { }
+        if (OperatingSystem.IsWindows())
+            kids.Add(Ui.Btn(L.S("lan_hotspot"), Ui.Kind.Tinted, () => { try { System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo("ms-settings:network-mobilehotspot") { UseShellExecute = true }); } catch { } }, size: 13));
+        kids.Add(Ui.Caption(L.S("lan_note"), P.Text3));
+        SatraShell.I.Sheet(L.S("lan_share"), Ui.V(12, kids.ToArray()), 440);
     }
 }
