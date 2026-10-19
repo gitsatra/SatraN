@@ -86,6 +86,7 @@ public static class SubscriptionHandler
         {
             throw new FormatException(ResUI.SubRequestHeadersInvalid);
         }
+        SatraIdentity.MergeInto(requestHeaders);
 
         var downloadHandle = new DownloadService
         {
