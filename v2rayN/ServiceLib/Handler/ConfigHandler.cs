@@ -105,11 +105,10 @@ public static class ConfigHandler
         config.UiItem.MainColumnItem ??= [];
         config.UiItem.WindowSizeItem ??= [];
 
-        if (config.UiItem.CurrentLanguage.IsNullOrEmpty())
+        if (config.UiItem.CurrentLanguage.IsNullOrEmpty() || !Global.Languages.Contains(config.UiItem.CurrentLanguage))
         {
-            config.UiItem.CurrentLanguage = Thread.CurrentThread.CurrentCulture.TwoLetterISOLanguageName.Equals("zh", StringComparison.CurrentCultureIgnoreCase)
-                ? Global.Languages.First()
-                : Global.Languages[2];
+            var two = Thread.CurrentThread.CurrentCulture.TwoLetterISOLanguageName.ToLowerInvariant();
+            config.UiItem.CurrentLanguage = Global.Languages.Contains(two) ? two : "en";
         }
 
         config.ConstItem ??= new ConstItem();

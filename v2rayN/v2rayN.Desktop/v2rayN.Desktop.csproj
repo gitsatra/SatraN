@@ -5,7 +5,8 @@
 		<ApplicationIcon>Assets\v2rayN.ico</ApplicationIcon>
 		<BuiltInComInteropSupport>true</BuiltInComInteropSupport>
 		<AvaloniaUseCompiledBindingsByDefault>true</AvaloniaUseCompiledBindingsByDefault>
-		<AssemblyName>v2rayN</AssemblyName>
+		<AssemblyName>SatraN</AssemblyName>
+		<Product>SatraN</Product>
 		<AllowUnsafeBlocks>true</AllowUnsafeBlocks>
 		<CETCompat>false</CETCompat>
 	</PropertyGroup>

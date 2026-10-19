@@ -2,7 +2,7 @@ namespace ServiceLib;
 
 public class Global
 {
-    public const string AppName = "v2rayN";
+    public const string AppName = "SatraN";
     public const string GithubUrl = "https://github.com";
     public const string GithubApiUrl = "https://api.github.com/repos";
     public const string GeoUrl = "https://github.com/Loyalsoldier/v2ray-rules-dat/releases/latest/download/{0}.dat";
@@ -500,15 +500,9 @@ public class Global
 
     public static readonly List<LanguageOption> LanguageOptions =
     [
-        new("zh-Hans", "简体中文"),
-        new("zh-Hant", "繁體中文"),
         new("en", "English"),
         new("fa", "فارسی"),
-        new("fr", "Français"),
-        new("ru", "Русский"),
-        new("hu", "Magyar"),
-        new("id", "Bahasa Indonesia"),
-        new("az", "Azərbaycan dili")
+        new("ru", "Русский")
     ];
 
     public static readonly List<string> Languages =
