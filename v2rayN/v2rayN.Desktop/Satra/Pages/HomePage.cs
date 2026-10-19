@@ -101,7 +101,7 @@ public class HomePage : IPage
         _timer.IsVisible = c.Phase == ConnPhase.On;
 
         var cfg = AppManager.Instance.Config;
-        var mode = cfg.TunModeItem.EnableTun ? L.S("mode_tun") : cfg.SystemProxyItem.SysProxyType == ESysProxyType.ForcedChange || c.Phase != ConnPhase.On ? L.S("mode_proxy") : L.S("mode_proxy_only");
+        var mode = SatraState.I.Mode switch { "tun" => L.S("mode_vpn"), "socks" => L.S("mode_proxy_only"), _ => L.S("mode_proxy") };
         _modeChip.Child = Ui.T(mode, 10.5, FontWeight.SemiBold, P.Text2);
         _modeChip.Background = P.B(P.Fill);
         _modeChip.CornerRadius = Ui.RPill;

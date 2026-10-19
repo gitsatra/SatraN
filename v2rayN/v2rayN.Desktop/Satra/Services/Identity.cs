@@ -6,7 +6,7 @@ namespace v2rayN.Desktop.Satra.Services;
 public static class Identity
 {
     public static string Os => OperatingSystem.IsWindows() ? "windows" : OperatingSystem.IsMacOS() ? "macos" : "linux";
-    public const string Version = "1.0.1";
+    public const string Version = "1.1.0";
     public static string App => $"SatraN/{Version}";
 
     public static void Apply()

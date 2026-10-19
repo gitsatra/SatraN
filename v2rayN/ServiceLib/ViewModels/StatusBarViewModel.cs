@@ -469,6 +469,9 @@ public partial class StatusBarViewModel : MyReactiveObject
         }
         else if (Utils.IsLinux())
         {
+            // SatraN: cores granted cap_net_admin (deb postinst or one-time pkexec) need no password
+            var sb = CoreInfoManager.Instance.GetCoreExecFile(CoreInfoManager.Instance.GetCoreInfo(ECoreType.sing_box), out _);
+            if (sb.IsNotEmpty() && File.Exists(sb + ".caps")) return true;
             return AppManager.Instance.LinuxSudoPwd.IsNotEmpty();
         }
         else if (Utils.IsMacOS())

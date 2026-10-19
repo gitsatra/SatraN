@@ -141,13 +141,22 @@ public class SatraCore : ReactiveObject
             }
             switch (SatraState.I.Mode)
             {
-                case "tun": Status.EnableTun = true; break;
+                case "tun":
+                    if (OperatingSystem.IsLinux() && !await TunPrivilege.EnsureAsync())
+                    {
+                        Toast?.Invoke(L.S("vpn_denied"));
+                        Set(ConnPhase.Failed);
+                        return;
+                    }
+                    Status.EnableTun = true;
+                    break;
                 case "socks": _socksOn = true; Status.SystemProxySelected = (int)ESysProxyType.ForcedClear; break;
                 default: Status.SystemProxySelected = (int)ESysProxyType.ForcedChange; break;
             }
             await Task.Delay(400);
             var r = await Status.TestServerAvailability();
-            if (r is { Time: > 0 })
+            var engaged = SatraState.I.Mode switch { "tun" => Cfg.TunModeItem.EnableTun, "proxy" => Cfg.SystemProxyItem.SysProxyType == ESysProxyType.ForcedChange, _ => true };
+            if (r is { Time: > 0 } && engaged)
             {
                 SessionUp = SessionDown = 0;
                 Since = DateTime.Now;

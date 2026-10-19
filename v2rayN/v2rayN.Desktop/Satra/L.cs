@@ -106,6 +106,7 @@ public static class L
         ["lan_pass"] = "Password",
         ["lan_hotspot"] = "Turn on Mobile Hotspot",
         ["lan_note"] = "Your firewall may ask to allow SatraN on private networks.",
+        ["vpn_denied"] = "VPN mode needs one-time permission. Try again, or use System proxy.",
     };
 
     private static readonly Dictionary<string, string> Fa = new()
@@ -198,6 +199,7 @@ public static class L
         ["lan_pass"] = "رمز عبور",
         ["lan_hotspot"] = "روشن کردن هات‌اسپات ویندوز",
         ["lan_note"] = "ممکن است فایروال برای اجازه به SatraN در شبکه خصوصی سؤال کند.",
+        ["vpn_denied"] = "حالت VPN یک بار به اجازه نیاز دارد. دوباره امتحان کنید یا «پراکسی سیستم» را انتخاب کنید.",
     };
 
     private static readonly Dictionary<string, string> Ru = new()
@@ -290,5 +292,6 @@ public static class L
         ["lan_pass"] = "Пароль",
         ["lan_hotspot"] = "Включить мобильный хот-спот",
         ["lan_note"] = "Брандмауэр может спросить разрешение для SatraN в частной сети.",
+        ["vpn_denied"] = "Режиму VPN нужно разовое разрешение. Повторите или выберите системный прокси.",
     };
 }
