@@ -1,0 +1,55 @@
+name: SatraN build
+
+on:
+  push:
+    branches: [main]
+    tags: ["v*"]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  XRAY_VERSION: v26.3.27
+  DOTNET_NOLOGO: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - rid: linux-x64
+            xray: Xray-linux-64
+          - rid: win-x64
+            xray: Xray-windows-64
+          - rid: osx-x64
+            xray: Xray-macos-64
+          - rid: osx-arm64
+            xray: Xray-macos-arm64-v8a
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+      - name: Version
+        id: v
+        run: |
+          if [[ "$GITHUB_REF" == refs/tags/v* ]]; then echo "ver=${GITHUB_REF#refs/tags/v}" >> $GITHUB_OUTPUT; else echo "ver=1.0.0-ci.${GITHUB_RUN_NUMBER}" >> $GITHUB_OUTPUT; fi
+      - name: Publish
+        run: dotnet publish v2rayN/v2rayN.Desktop/v2rayN.Desktop.csproj -c Release -r ${{ matrix.rid }} -p:SelfContained=true -p:PublishSingleFile=false -o pub
+      - name: Xray core
+        run: |
+          curl -fsSL -o xray.zip https://github.com/XTLS/Xray-core/releases/download/${XRAY_VERSION}/${{ matrix.xray }}.zip
+          mkdir xray && unzip -q xray.zip -d xray
+      - name: Package
+        run: python3 packaging/package.py ${{ matrix.rid }} pub xray ${{ steps.v.outputs.ver }} dist
+      - uses: actions/upload-artifact@v4
+        with:
+          name: SatraN-${{ matrix.rid }}
+          path: dist/*
+          retention-days: 14
+  # Releases stay private: artifacts only. Signing (Windows Authenticode, Apple notarization) is
+  # intentionally not configured until certificates are provided.

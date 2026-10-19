@@ -140,6 +140,6 @@ public class SettingsPage : IPage
 
         _body.Children.Add(Ui.Section(L.S("about")));
         _body.Children.Add(Ui.Group(
-            Ui.ListRow("SatraN", $"v{Utils.GetVersionInfo()} · Xray · {Identity.Os}", Ui.Btn("Exit", Ui.Kind.Danger, () => _ = AppManager.Instance.AppExitAsync(true), size: 13), glyph: "S", glyphColor: P.Accent)));
+            Ui.ListRow("SatraN", $"v{Identity.Version} · Xray · v2rayN {Utils.GetVersionInfo()} · {Identity.Os}", Ui.Btn("Exit", Ui.Kind.Danger, () => _ = AppManager.Instance.AppExitAsync(true), size: 13), glyph: "S", glyphColor: P.Accent)));
     }
 }

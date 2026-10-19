@@ -43,7 +43,7 @@ public class SatraShell : Grid
         top.Children.Add(_nav);
         var sideGrid = new Grid { RowDefinitions = new RowDefinitions("*,Auto") };
         sideGrid.Children.Add(top);
-        var foot = Ui.Caption($"v{Utils.GetVersionInfo()} · {Identity.Os}", P.Text3);
+        var foot = Ui.Caption($"v{Identity.Version} · {Identity.Os}", P.Text3);
         Grid.SetRow(foot, 1);
         sideGrid.Children.Add(foot);
         side.Child = sideGrid;
