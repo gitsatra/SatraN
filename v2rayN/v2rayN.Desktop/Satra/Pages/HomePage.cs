@@ -4,13 +4,15 @@ using v2rayN.Desktop.Satra.Services;
 
 namespace v2rayN.Desktop.Satra.Pages;
 
-/// <summary>Home: one non-scrolling screen – connect orb, status, active server, live speed and totals.</summary>
+/// <summary>Home: connect orb, mode selector, smart-routing toggle, active server, live speed.</summary>
 public class HomePage : IPage
 {
-    private readonly Grid _root = new() { Margin = new Thickness(36, 28, 36, 28), RowDefinitions = new RowDefinitions("Auto,*,Auto,Auto,Auto") };
-    private readonly ContentControl _modeHost = new() { MaxWidth = 640, Margin = new Thickness(0, 0, 0, 14) };
+    private readonly Grid _root = new() { Margin = new Thickness(36, 28, 36, 28), RowDefinitions = new RowDefinitions("Auto,*,Auto,Auto,Auto,Auto") };
+    private readonly ContentControl _modeHost = new() { MaxWidth = 640, Margin = new Thickness(0, 0, 0, 10) };
+    private readonly ContentControl _routeHost = new() { MaxWidth = 640, Margin = new Thickness(0, 0, 0, 14) };
     private string _modeSig = "";
-    private readonly ConnectOrb _orb = new() { Width = 220, Height = 220, HorizontalAlignment = HorizontalAlignment.Center };
+    private string _routeSig = "";
+    private readonly ConnectOrb _orb = new() { Width = 200, Height = 200, HorizontalAlignment = HorizontalAlignment.Center };
     private readonly TextBlock _status = Ui.T("", 26, FontWeight.Bold);
     private readonly TextBlock _hint = Ui.T("", 13.5, FontWeight.Normal, P.Text2);
     private readonly TextBlock _timer = Ui.T("", 13.5, FontWeight.Medium, P.Text2);
@@ -41,12 +43,14 @@ public class HomePage : IPage
 
         Grid.SetRow(_modeHost, 2);
         _root.Children.Add(_modeHost);
+        Grid.SetRow(_routeHost, 3);
+        _root.Children.Add(_routeHost);
         _server.Margin = new Thickness(0, 0, 0, 14);
         _server.MaxWidth = 640;
-        Grid.SetRow(_server, 3);
+        Grid.SetRow(_server, 4);
         _root.Children.Add(_server);
 
-        var stats = new Grid { ColumnDefinitions = new ColumnDefinitions("*,*,*"), MaxWidth = 640 };
+        var stats = new Grid { ColumnDefinitions = new ColumnDefinitions("*,*,*") };
         Control Stat(string label, TextBlock big, TextBlock small, Color dot)
         {
             var d = new Border { Width = 8, Height = 8, CornerRadius = Ui.RPill, Background = P.B(dot), VerticalAlignment = VerticalAlignment.Center };
@@ -62,7 +66,7 @@ public class HomePage : IPage
         stats.Children.Add(c3);
         var statCard = Ui.Card(Ui.V(12, stats, _spark), new Thickness(20, 16));
         statCard.MaxWidth = 640;
-        Grid.SetRow(statCard, 4);
+        Grid.SetRow(statCard, 5);
         _root.Children.Add(statCard);
 
         SatraCore.I.Speed += (_, _) => Dispatcher.UIThread.Post(UpdateSpeed);
@@ -100,7 +104,6 @@ public class HomePage : IPage
         _timer.Text = c.Since is { } s ? (DateTime.Now - s).ToString(@"hh\:mm\:ss") : "";
         _timer.IsVisible = c.Phase == ConnPhase.On;
 
-        var cfg = AppManager.Instance.Config;
         var mode = SatraState.I.Mode switch { "tun" => L.S("mode_vpn"), "socks" => L.S("mode_proxy_only"), _ => L.S("mode_proxy") };
         _modeChip.Child = Ui.T(mode, 10.5, FontWeight.SemiBold, P.Text2);
         _modeChip.Background = P.B(P.Fill);
@@ -108,8 +111,11 @@ public class HomePage : IPage
         _modeChip.Padding = new Thickness(8, 2);
         _modeChip.HorizontalAlignment = HorizontalAlignment.Left;
 
-        var msig = $"{SatraState.I.Mode}{c.Phase == ConnPhase.On}";
+        var msig = $"{SatraState.I.Mode}{c.Phase == ConnPhase.On}{L.Lang}";
         if (msig != _modeSig) { _modeSig = msig; _modeHost.Content = ModeSelector(); }
+
+        var rsig = $"{SatraState.I.SmartRouting}{SatraState.I.Routing}{L.Lang}";
+        if (rsig != _routeSig) { _routeSig = rsig; _routeHost.Content = SmartRoutingCard(); }
 
         var a = c.Active;
         var key = $"{a?.IndexId}|{a?.Delay}|{(a != null ? NetBadges.ExitCc(a) : null)}|{SatraState.I.SmartConnect}";
@@ -136,12 +142,38 @@ public class HomePage : IPage
             Refresh();
             if (SatraCore.I.Phase == ConnPhase.On) _ = SatraCore.I.ReconnectAsync();
         });
-        if (st.Mode != "socks") return seg;
+        var hint = Ui.Caption(L.S("mode_hint"), P.Text3);
+        hint.TextWrapping = TextWrapping.Wrap;
+        if (st.Mode != "socks") return Ui.V(8, seg, hint);
         var port = AppManager.Instance.GetLocalPort(EInboundProtocol.socks);
+        var http = AppManager.Instance.GetLocalPort(EInboundProtocol.socks) + 1;
         var addr = $"{Global.Loopback}:{port}";
-        var chip = Ui.Btn(L.F("proxy_addr", addr, addr), Ui.Kind.Ghost, () => _ = SatraShell.I.Copy(addr), size: 12.5);
+        var chip = Ui.Btn(L.F("proxy_addr", addr, $"{Global.Loopback}:{http}"), Ui.Kind.Ghost, () => _ = SatraShell.I.Copy(addr), size: 12.5);
         chip.HorizontalAlignment = HorizontalAlignment.Center;
-        return Ui.V(8, seg, chip);
+        return Ui.V(8, seg, chip, hint);
+    }
+
+    /// Prominent smart-routing toggle: local sites direct while VPN stays on; off = full tunnel.
+    private Control SmartRoutingCard()
+    {
+        var st = SatraState.I;
+        var region = st.Routing == "russia" ? L.S("routing_russia") : L.S("routing_iran");
+        var title = $"{L.S("smart_routing")} ({region})";
+        var note = st.SmartRouting ? L.S("smart_routing_d") : L.S("smart_routing_off_d");
+        var sw = Ui.Switch(st.SmartRouting, v =>
+        {
+            st.SmartRouting = v;
+            SatraState.Save();
+            if (v)
+            {
+                _ = SatraCore.I.Main.ApplyRegionalPreset(st.Routing == "russia" ? EPresetType.Russia : EPresetType.Iran);
+            }
+            _ = SatraCore.I.ApplyLocalLimitsAsync();
+            _routeSig = "";
+            Refresh();
+        });
+        var row = Ui.ListRow(title, note, sw, glyph: "⇄", glyphColor: st.SmartRouting ? P.Accent : P.Text3);
+        return Ui.Enter(Ui.Group(row));
     }
 
     private Control ServerCard(ProfileItemModel? a)

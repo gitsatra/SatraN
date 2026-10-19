@@ -47,29 +47,39 @@ public class SettingsPage : IPage
     private void Build(bool force)
     {
         var st = SatraState.I;
-        var sig = $"{SatraCore.I.Phase == ConnPhase.On}{st.Mode}{st.Routing}{st.Advanced}{L.Lang}{_modeChanged}{st.SmartConnect}{st.AutoUpdate}";
+        var ib0 = Cfg.Inbound.First();
+        var lanOn0 = ib0.AllowLANConn && ib0.NewPort4LAN;
+        var sig = $"{SatraCore.I.Phase == ConnPhase.On}{st.Mode}{st.Routing}{st.SmartRouting}{st.Advanced}{L.Lang}{_modeChanged}{st.SmartConnect}{st.AutoUpdate}{lanOn0}{st.ViaVpn.Count}{st.Direct.Count}";
         if (!force && sig == _sig) return;
         _sig = sig;
         _body.Children.Clear();
-        var connected = SatraCore.I.Phase == ConnPhase.On;
 
-        // routing (Iran / Russia only)
+        // Region for smart routing (toggle itself lives on Home — keep this findable in Settings too)
         _body.Children.Add(Ui.Section(L.S("routing")));
         var routes = new[] { "iran", "russia" };
-        _body.Children.Add(Ui.Card(Segmented([L.S("routing_iran"), L.S("routing_russia")], Math.Max(0, Array.IndexOf(routes, st.Routing)), i =>
-        {
-            st.Routing = routes[i];
-            SatraState.Save();
-            _ = SatraCore.I.Main.ApplyRegionalPreset(i == 0 ? EPresetType.Iran : EPresetType.Russia);
-            SatraCore.I.Notify(L.S("routing") + " · OK");
-            Refresh();
-        }), new Thickness(14)));
+        _body.Children.Add(Ui.Card(Ui.V(10,
+            Ui.Caption(L.S("routing_region_d"), P.Text3),
+            Segmented([L.S("routing_iran"), L.S("routing_russia")], Math.Max(0, Array.IndexOf(routes, st.Routing)), i =>
+            {
+                st.Routing = routes[i];
+                SatraState.Save();
+                if (st.SmartRouting) _ = SatraCore.I.Main.ApplyRegionalPreset(i == 0 ? EPresetType.Iran : EPresetType.Russia);
+                SatraCore.I.Notify(L.S("routing") + " · OK");
+                Refresh();
+            })), new Thickness(14)));
         _body.Children.Add(Ui.Group(
-            Ui.ListRow(L.S("smart_routing"), L.S("smart_routing_d"), Ui.Switch(st.SmartRouting, v => { st.SmartRouting = v; SatraState.Save(); _ = SatraCore.I.ApplyLocalLimitsAsync(); })),
-            Ui.ListRow(L.S("exceptions"), L.F("exceptions_d", st.ViaVpn.Count, st.Direct.Count), null, ExceptionsSheet, "⇄"),
+            Ui.ListRow(L.S("smart_routing"), st.SmartRouting ? L.S("smart_routing_d") : L.S("smart_routing_off_d"),
+                Ui.Switch(st.SmartRouting, v =>
+                {
+                    st.SmartRouting = v;
+                    SatraState.Save();
+                    if (v) _ = SatraCore.I.Main.ApplyRegionalPreset(st.Routing == "russia" ? EPresetType.Russia : EPresetType.Iran);
+                    _ = SatraCore.I.ApplyLocalLimitsAsync();
+                    Refresh();
+                })),
             Ui.ListRow(L.S("kill_switch"), L.S("kill_switch_d"), Ui.Switch(st.KillSwitch, v => { st.KillSwitch = v; SatraState.Save(); }))));
 
-        // share the VPN with phones/PCs on the same Wi-Fi or hotspot (separate password-protected port)
+        // Share VPN with phones/PCs on the same Wi-Fi or hotspot
         var ib = Cfg.Inbound.First();
         var lanOn = ib.AllowLANConn && ib.NewPort4LAN;
         _body.Children.Add(Ui.Section(L.S("lan_share")));
@@ -90,7 +100,7 @@ public class SettingsPage : IPage
             {
                 var win = SatraShell.I.Window;
                 cc.Content = null;
-                cc.Content = new SatraShell(win); // rebuild UI in the new language / direction
+                cc.Content = new SatraShell(win);
                 SatraShell.I.Go("settings");
             }
         });
@@ -119,6 +129,7 @@ public class SettingsPage : IPage
                 Ui.ListRow(title, null, Ui.T("›", 18, FontWeight.Bold, P.Text3), () => cmd.Execute().Subscribe(_ => { }), glyph);
             _body.Children.Add(Ui.Section(L.S("advanced")));
             _body.Children.Add(Ui.Enter(Ui.Group(
+                Ui.ListRow(L.S("exceptions"), L.F("exceptions_d", st.ViaVpn.Count, st.Direct.Count), null, ExceptionsSheet, "⇄"),
                 Open(L.S("core_settings"), "⚙", m.OptionSettingCmd),
                 Open(L.S("dns"), "◎", m.DNSSettingCmd),
                 Open(L.S("routing_rules"), "⇄", m.RoutingSettingCmd),

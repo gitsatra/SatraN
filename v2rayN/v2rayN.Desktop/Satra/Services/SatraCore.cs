@@ -139,6 +139,7 @@ public class SatraCore : ReactiveObject
             {
                 await SmartPickAsync(quiet: true);
             }
+            // Mutually exclusive modes: real VPN (TUN) vs system proxy vs listen-only proxy
             switch (SatraState.I.Mode)
             {
                 case "tun":
@@ -148,20 +149,39 @@ public class SatraCore : ReactiveObject
                         Set(ConnPhase.Failed);
                         return;
                     }
-                    Status.EnableTun = true;
+                    Status.SystemProxySelected = (int)ESysProxyType.ForcedClear;
+                    if (!Status.EnableTun) Status.EnableTun = true;
                     break;
-                case "socks": _socksOn = true; Status.SystemProxySelected = (int)ESysProxyType.ForcedClear; break;
-                default: Status.SystemProxySelected = (int)ESysProxyType.ForcedChange; break;
+                case "socks":
+                    if (Status.EnableTun) Status.EnableTun = false;
+                    _socksOn = true;
+                    Status.SystemProxySelected = (int)ESysProxyType.ForcedClear;
+                    break;
+                default:
+                    if (Status.EnableTun) Status.EnableTun = false;
+                    Status.SystemProxySelected = (int)ESysProxyType.ForcedChange;
+                    break;
             }
-            await Task.Delay(400);
-            var r = await Status.TestServerAvailability();
-            var engaged = SatraState.I.Mode switch { "tun" => Cfg.TunModeItem.EnableTun, "proxy" => Cfg.SystemProxyItem.SysProxyType == ESysProxyType.ForcedChange, _ => true };
+            // Wait until the chosen mode is actually engaged (core reload is async)
+            var engaged = false;
+            for (var i = 0; i < 25; i++)
+            {
+                await Task.Delay(200);
+                engaged = SatraState.I.Mode switch
+                {
+                    "tun" => Cfg.TunModeItem.EnableTun && CoreManager.Instance.CoreRunning,
+                    "proxy" => Cfg.SystemProxyItem.SysProxyType == ESysProxyType.ForcedChange && CoreManager.Instance.CoreRunning,
+                    _ => CoreManager.Instance.CoreRunning,
+                };
+                if (engaged) break;
+            }
+            var r = engaged ? await Status.TestServerAvailability() : null;
             if (r is { Time: > 0 } && engaged)
             {
                 SessionUp = SessionDown = 0;
                 Since = DateTime.Now;
                 Set(ConnPhase.On);
-                _ = RefreshActiveExitAsync(); // re-check the exit IP of the config we connected to
+                _ = RefreshActiveExitAsync();
             }
             else
             {
