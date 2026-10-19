@@ -89,8 +89,8 @@ public class SatraShell : Grid
     {
         _pages[key] = page;
         var label = Ui.T(L.S(key), 14.5, FontWeight.Medium, P.Text2);
-        var ic = Ui.T(glyph, 15, FontWeight.Bold, P.Text3);
-        ic.Width = 22;
+        var ic = Icons.Make(glyph, 18, P.Text3);
+        ic.Width = 18; ic.Margin = new Thickness(2, 0);
         var item = new Border { CornerRadius = Ui.RCtl, Padding = new Thickness(12, 10), Child = Ui.H(10, ic, label), Cursor = new Cursor(StandardCursorType.Hand), Background = Brushes.Transparent };
         item.Transitions = new Transitions { new BrushTransition { Property = Border.BackgroundProperty, Duration = TimeSpan.FromMilliseconds(180) } };
         item.PointerEntered += (_, _) => { if (_current != key) item.Background = P.B(P.Fill, 0.5); };
@@ -108,7 +108,7 @@ public class SatraShell : Grid
             var on = k == key;
             b.Background = on ? P.B(P.AccentSoft) : Brushes.Transparent;
             var sp = (StackPanel)b.Child!;
-            ((TextBlock)sp.Children[0]).Foreground = P.B(on ? P.Accent : P.Text3);
+            Icons.SetFg(sp.Children[0], P.B(on ? P.Accent : P.Text3));
             ((TextBlock)sp.Children[1]).Foreground = P.B(on ? P.Text : P.Text2);
             ((TextBlock)sp.Children[1]).FontWeight = on ? FontWeight.SemiBold : FontWeight.Medium;
         }

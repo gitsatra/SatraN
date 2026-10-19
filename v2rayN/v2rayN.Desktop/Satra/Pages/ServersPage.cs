@@ -25,7 +25,7 @@ public class ServersPage : IPage
             Ui.Btn(L.S("add"), Ui.Kind.Tinted, () => _ = AddAsync(), "+", 13))));
 
         var smart = Ui.Card(Ui.Row(
-            Ui.H(12, new Border { Width = 36, Height = 36, CornerRadius = Ui.RCtl, Background = P.B(P.AccentSoft), Child = Center(Ui.T("⚡", 17, FontWeight.Bold, P.Accent)) },
+            Ui.H(12, new Border { Width = 36, Height = 36, CornerRadius = Ui.RCtl, Background = P.B(P.AccentSoft), Child = Center(Icons.Make("⚡", 18, P.Accent)) },
                 Ui.V(2, Ui.T(L.S("smart"), 15, FontWeight.SemiBold), Ui.Caption(L.S("smart_desc")))),
             Ui.H(10, Ui.Btn(L.S("sort_best"), Ui.Kind.Ghost, () => { _sortBest = !_sortBest; Rebuild(true); }, size: 13),
                 Ui.Switch(SatraState.I.SmartConnect, v => { SatraState.I.SmartConnect = v; SatraState.Save(); }))), new Thickness(16, 12));
@@ -60,7 +60,7 @@ public class ServersPage : IPage
     {
         if (string.IsNullOrEmpty(subId)) return "";
         if (SatraState.I.Subs.TryGetValue(subId, out var m) && !string.IsNullOrWhiteSpace(m.Title)) return m.Title!;
-        return SatraCore.I.Profiles.SubItems.FirstOrDefault(s => s.Id == subId)?.Remarks ?? "";
+        return SatraCore.I.Profiles.SubItems.FirstOrDefault(s => s.Id == subId)?.Remarks is { } r ? Ui.CleanName(r) : "";
     }
 
     public static Border PingPill(int delay) => delay switch
@@ -99,7 +99,7 @@ public class ServersPage : IPage
             var on = !_favOnly && pv.SelectedSub?.Id == s.Id;
             _chips.Children.Add(Chip(name, on, () => { _favOnly = false; pv.SelectedSub = s; RebuildChips(); }));
         }
-        _chips.Children.Add(Chip("★ " + L.S("favorites"), _favOnly, () => { _favOnly = !_favOnly; RebuildChips(); Rebuild(true); }));
+        _chips.Children.Add(Chip(L.S("favorites"), _favOnly, () => { _favOnly = !_favOnly; RebuildChips(); Rebuild(true); }));
     }
 
     private void Rebuild(bool force)
@@ -144,7 +144,7 @@ public class ServersPage : IPage
         }, L.S("favorites"), fav ? P.Warning : P.Text3, 15);
 
         var exitCc = NetBadges.ExitCc(p);
-        var flag = Ui.T(NetBadges.Flag(exitCc), 24);
+        var flag = NetBadges.FlagView(exitCc, 24);
         flag.VerticalAlignment = VerticalAlignment.Center;
 
         var badges = new List<Control> { Ui.Pill(Proto(p), P.Text2, P.Fill, 10) };
@@ -156,7 +156,7 @@ public class ServersPage : IPage
         if (isActive) badges.Add(Ui.Pill(L.S("active"), P.Success, P.SuccessSoft, 10));
         if (!string.IsNullOrEmpty(p.TodayDown) && p.TodayDown != "0 B") badges.Add(Ui.Pill(Ui.Ltr($"↓{p.TodayDown} ↑{p.TodayUp}"), P.Text3, Colors.Transparent, 11));
 
-        var name = Ui.T(p.Remarks ?? p.Address ?? "", 14.5, FontWeight.SemiBold);
+        var name = Ui.T(Ui.CleanName(p.Remarks ?? p.Address), 14.5, FontWeight.SemiBold);
         name.TextTrimming = TextTrimming.CharacterEllipsis;
         var left = Ui.H(12, star, flag, Ui.V(4, name, Ui.H(6, badges.ToArray())));
 

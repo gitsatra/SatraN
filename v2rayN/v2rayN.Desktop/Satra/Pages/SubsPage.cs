@@ -62,7 +62,7 @@ public class SubsPage : IPage
     private Control Card(SubItem s)
     {
         SatraState.I.Subs.TryGetValue(s.Id, out var m);
-        var title = m?.Title is { Length: > 0 } t ? t : s.Remarks;
+        var title = Ui.CleanName(m?.Title is { Length: > 0 } t ? t : s.Remarks);
         var kids = new List<Control>();
         var enabled = Ui.Switch(s.Enabled, async v => { s.Enabled = v; await ConfigHandler.AddSubItem(AppManager.Instance.Config, s); SatraCore.I.Notify(L.S("reconnect_note")); });
         kids.Add(Ui.Row(Ui.V(2, Ui.T(title, 18, FontWeight.Bold), Ui.Caption(SatraState.I.Hub.ContainsKey(s.Id) ? "Satra Hub · " + L.S("hub_registered") : HostOf(s.Url), P.Text3)), enabled));
@@ -72,9 +72,9 @@ public class SubsPage : IPage
             var (frac, data, time) = SubInfo.Describe(m);
             var col = P.Level(frac);
             kids.Add(Ui.Bar(frac, col, 8));
-            kids.Add(Ui.Row(Ui.T(data, 13, FontWeight.Medium, P.Text2), Ui.Pill(time, col, P.Lerp(P.Surface, col, 0.16))));
+            kids.Add(Ui.Row(DataLine(m), Ui.Pill(time, col, P.Lerp(P.Surface, col, 0.16))));
             if (!string.IsNullOrWhiteSpace(m.Announce))
-                kids.Add(new Border { Background = P.B(P.InfoSoft), CornerRadius = Ui.RCtl, Padding = new Thickness(12, 8), Child = Ui.T("📣  " + m.Announce, 13, FontWeight.Normal, P.Text, TextWrapping.Wrap) });
+                kids.Add(new Border { Background = P.B(P.InfoSoft), CornerRadius = Ui.RCtl, Padding = new Thickness(12, 8), Child = Ui.H(10, Icons.Make("📣", 15, P.Info), Ui.T(m.Announce, 13, FontWeight.Normal, P.Text, TextWrapping.Wrap)) });
         }
 
         var actions = new List<Control> { Ui.Btn(L.S("update"), Ui.Kind.Ghost, () => _ = SatraCore.I.UpdateSubsAsync(s.Id), "⟳", 13) };
@@ -165,7 +165,7 @@ public class SubsPage : IPage
         var old = await SatraShell.I.Prompt(L.S("pick_pin") + " (old / empty)", "PIN", true);
         var nw = await SatraShell.I.Prompt(L.S("set_pin"), "PIN", true);
         if (string.IsNullOrEmpty(nw) || nw.Length < 4) return;
-        if (await Try(c, async () => { await c.SetPin(old, nw); return true; })) { c.Pin = nw; SatraCore.I.Notify("✓"); }
+        if (await Try(c, async () => { await c.SetPin(old, nw); return true; })) { c.Pin = nw; SatraCore.I.Notify("PIN · OK"); }
     }
 
     private async Task LimitsSheet(string subId, string? deviceId = null, string? deviceName = null)
@@ -235,5 +235,15 @@ public class SubsPage : IPage
         var t = Ui.T("MB", 13, FontWeight.Medium, P.Text2);
         t.VerticalAlignment = Avalonia.Layout.VerticalAlignment.Center;
         return t;
+    }
+
+    /// Mixed-direction line built from isolated runs so numbers never reorder inside Persian text.
+    private static Control DataLine(SubMeta m)
+    {
+        Control Run(string t, bool num = false) => Ui.T(num ? Ui.Ltr(t) : t, 13, FontWeight.Medium, P.Text2);
+        var used = m.Up + m.Down;
+        return m.Total > 0
+            ? Ui.H(5, Run(Ui.Bytes(Math.Max(0, m.Total - used)), true), Run(L.S("remaining")), Run("·"), Run($"{Ui.Bytes(used).Trim('\u200E')} / {Ui.Bytes(m.Total).Trim('\u200E')}", true))
+            : Ui.H(5, Run(Ui.Bytes(used), true), Run("·"), Run(L.S("unlimited")));
     }
 }

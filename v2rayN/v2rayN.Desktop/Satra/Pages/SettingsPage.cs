@@ -85,7 +85,7 @@ public class SettingsPage : IPage
             st.Routing = routes[i];
             SatraState.Save();
             _ = SatraCore.I.Main.ApplyRegionalPreset(i == 0 ? EPresetType.Iran : EPresetType.Russia);
-            SatraCore.I.Notify(L.S("routing") + " ✓");
+            SatraCore.I.Notify(L.S("routing") + " · OK");
             Refresh();
         }), new Thickness(14)));
 

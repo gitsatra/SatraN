@@ -100,8 +100,22 @@ public static partial class NetBadges
         foreach (var id in indexIds) SatraState.I.Geo.Remove(id);
     }
 
+    /// Windows has no colour flag glyphs (it shows two letters), so draw a neat code tile there.
+    public static Control FlagView(string? cc, double size)
+    {
+        if (!OperatingSystem.IsWindows()) { var t = Ui.T(Flag(cc), size); t.VerticalAlignment = VerticalAlignment.Center; return t; }
+        var label = cc is { Length: 2 } ? cc.ToUpperInvariant() : "··";
+        return new Border
+        {
+            Width = size * 1.25, Height = size * 0.9, CornerRadius = new CornerRadius(5), Background = P.B(P.Fill),
+            VerticalAlignment = VerticalAlignment.Center,
+            Child = new TextBlock { Text = label, FontSize = size * 0.42, FontWeight = FontWeight.Bold, Foreground = P.B(P.Text2), HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center },
+        };
+    }
+
     public static string Flag(string? cc)
     {
+        if (OperatingSystem.IsWindows()) return cc is { Length: 2 } ? cc.ToUpperInvariant() : "";
         if (cc is not { Length: 2 }) return "🌐";
         return string.Concat(cc.ToUpperInvariant().Select(ch => char.ConvertFromUtf32(0x1F1E6 + ch - 'A')));
     }

@@ -1,0 +1,40 @@
+namespace v2rayN.Desktop.Satra;
+
+/// Monochrome vector icons (Material Design paths, 24x24). Never rely on emoji fonts.
+public static class Icons
+{
+    public static readonly Dictionary<string, string> Map = new()
+    {
+        ["◉"] = "M10,20V14H14V20H19V12H22L12,3L2,12H5V20H10Z",
+        ["≡"] = "M7,5H21V7H7V5M7,13V11H21V13H7M4,4.5A1.5,1.5 0 0,1 5.5,6A1.5,1.5 0 0,1 4,7.5A1.5,1.5 0 0,1 2.5,6A1.5,1.5 0 0,1 4,4.5M4,10.5A1.5,1.5 0 0,1 5.5,12A1.5,1.5 0 0,1 4,13.5A1.5,1.5 0 0,1 2.5,12A1.5,1.5 0 0,1 4,10.5M7,19V17H21V19H7M4,16.5A1.5,1.5 0 0,1 5.5,18A1.5,1.5 0 0,1 4,19.5A1.5,1.5 0 0,1 2.5,18A1.5,1.5 0 0,1 4,16.5Z",
+        ["▣"] = "M12,16L19.36,10.27L21,9L12,2L3,9L4.63,10.27M12,18.54L4.62,12.81L3,14.07L12,21.07L21,14.07L19.37,12.8L12,18.54Z",
+        ["▥"] = "M22,21H2V3H4V19H6V10H10V19H12V6H16V19H18V14H22V21Z",
+        ["⚙"] = "M3,17V19H9V17H3M3,5V7H13V5H3M13,21V19H21V17H13V15H11V21H13M7,9V11H3V13H7V15H9V9H7M21,13V11H11V13H21M15,9H17V7H21V5H17V3H15V9Z",
+        ["⟳"] = "M17.65,6.35C16.2,4.9 14.21,4 12,4A8,8 0 0,0 4,12A8,8 0 0,0 12,20C15.73,20 18.84,17.45 19.73,14H17.65C16.83,16.33 14.61,18 12,18A6,6 0 0,1 6,12A6,6 0 0,1 12,6C13.66,6 15.14,6.69 16.22,7.78L13,11H20V4L17.65,6.35Z",
+        ["⚡"] = "M7,2V13H10V22L17,10H13L17,2H7Z",
+        ["★"] = "M12,17.27L18.18,21L16.54,13.97L22,9.24L14.81,8.62L12,2L9.19,8.62L2,9.24L7.45,13.97L5.82,21L12,17.27Z",
+        ["☆"] = "M12,15.39L8.24,17.66L9.23,13.38L5.91,10.5L10.29,10.13L12,6.09L13.71,10.13L18.09,10.5L14.77,13.38L15.76,17.66M22,9.24L14.81,8.63L12,2L9.19,8.63L2,9.24L7.45,13.97L5.82,21L12,17.27L18.18,21L16.54,13.97L22,9.24Z",
+        ["🗑"] = "M19,4H15.5L14.5,3H9.5L8.5,4H5V6H19M6,19A2,2 0 0,0 8,21H16A2,2 0 0,0 18,19V7H6V19Z",
+        ["✕"] = "M19,6.41L17.59,5L12,10.59L6.41,5L5,6.41L10.59,12L5,17.59L6.41,19L12,13.41L17.59,19L19,17.59L13.41,12L19,6.41Z",
+        ["✓"] = "M21,7L9,19L3.5,13.5L4.91,12.09L9,16.17L19.59,5.59L21,7Z",
+        ["▢"] = "M21,16H3V4H21M21,2H3C1.89,2 1,2.89 1,4V16A2,2 0 0,0 3,18H10V20H8V22H16V20H14V18H21A2,2 0 0,0 23,16V4C23,2.89 22.1,2 21,2Z",
+        ["📣"] = "M12,8H4A2,2 0 0,0 2,10V14A2,2 0 0,0 4,16H5V20A1,1 0 0,0 6,21H8A1,1 0 0,0 9,20V16H12L17,20V4L12,8M21.5,12C21.5,13.71 20.54,15.26 19,16V8C20.53,8.75 21.5,10.3 21.5,12Z",
+        ["🔒"] = "M12,17A2,2 0 0,0 14,15C14,13.89 13.1,13 12,13A2,2 0 0,0 10,15A2,2 0 0,0 12,17M18,8A2,2 0 0,1 20,10V20A2,2 0 0,1 18,22H6A2,2 0 0,1 4,20V10C4,8.89 4.9,8 6,8H7V6A5,5 0 0,1 12,1A5,5 0 0,1 17,6V8H18M12,3A3,3 0 0,0 9,6V8H15V6A3,3 0 0,0 12,3Z",
+        ["＋"] = "M19,13H13V19H11V13H5V11H11V5H13V11H19V13Z",
+        ["+"] = "M19,13H13V19H11V13H5V11H11V5H13V11H19V13Z",
+    };
+
+    public static bool Has(string g) => Map.ContainsKey(g.Replace("\uFE0E", "").Replace("\uFE0F", "").Trim());
+
+    public static Control Make(string g, double size, Color color)
+    {
+        var k = g.Replace("\uFE0E", "").Replace("\uFE0F", "").Trim();
+        if (!Map.TryGetValue(k, out var d)) return Ui.T(g, size, FontWeight.SemiBold, color);
+        return new PathIcon { Data = StreamGeometry.Parse(d), Width = size, Height = size, Foreground = P.B(color), VerticalAlignment = VerticalAlignment.Center };
+    }
+
+    public static void SetFg(Control c, IBrush b)
+    {
+        if (c is TextBlock t) t.Foreground = b; else if (c is TemplatedControl tc) tc.Foreground = b;
+    }
+}

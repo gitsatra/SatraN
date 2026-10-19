@@ -154,7 +154,7 @@ public static class Ui
             Kind.Success => (P.SuccessSoft, P.Success),
             _ => (P.Fill, P.Text),
         };
-        var content = icon == null ? (Control)T(text, size, FontWeight.SemiBold, fg) : H(6, T(icon, size, FontWeight.SemiBold, fg), T(text, size, FontWeight.SemiBold, fg));
+        var content = icon == null ? (Control)T(text, size, FontWeight.SemiBold, fg) : H(6, Icons.Make(icon, size - 1, fg), T(text, size, FontWeight.SemiBold, fg));
         var b = new Button
         {
             Content = content,
@@ -175,7 +175,7 @@ public static class Ui
     {
         var b = new Button
         {
-            Content = T(glyph, size, FontWeight.SemiBold, fg ?? P.Text2),
+            Content = Icons.Make(glyph, size, fg ?? P.Text2),
             Background = P.B(P.Fill),
             CornerRadius = RPill,
             Width = 34, Height = 34,
@@ -232,9 +232,9 @@ public static class Ui
         Control content = left;
         if (glyph != null)
         {
-            var ic = new Border { Width = 30, Height = 30, CornerRadius = new CornerRadius(9), Background = P.B(glyphColor ?? P.Accent, 0.16), Child = T(glyph, 15, FontWeight.SemiBold, glyphColor ?? P.Accent), VerticalAlignment = VerticalAlignment.Center };
-            ((TextBlock)ic.Child).HorizontalAlignment = HorizontalAlignment.Center;
-            ((TextBlock)ic.Child).VerticalAlignment = VerticalAlignment.Center;
+            var ic = new Border { Width = 30, Height = 30, CornerRadius = new CornerRadius(9), Background = P.B(glyphColor ?? P.Accent, 0.16), Child = Icons.Make(glyph, 16, glyphColor ?? P.Accent), VerticalAlignment = VerticalAlignment.Center };
+            ic.Child.HorizontalAlignment = HorizontalAlignment.Center;
+            ic.Child.VerticalAlignment = VerticalAlignment.Center;
             content = H(12, ic, left);
         }
         var row = new Border { Padding = new Thickness(14, 11), Background = Brushes.Transparent, Child = Row(content, accessory ?? (onClick != null ? T("›", 18, FontWeight.Normal, P.Text3) : null)) };
@@ -289,4 +289,15 @@ public static class Ui
 
     /// <summary>Keeps numbers with units ("4 ms", "1.2 GB") in reading order inside RTL text.</summary>
     public static string Ltr(string s) => s.Length > 0 && s[0] == '\u200E' ? s : "\u200E" + s + "\u200E";
+
+    private static readonly System.Text.RegularExpressions.Regex PanelInfo =
+        new(@"\s*[|\-–]?\s*(?:\u23F3|\uD83D\uDCCA|\u231B)[^|]*", System.Text.RegularExpressions.RegexOptions.Compiled);
+
+    /// Strip 3x-ui info suffixes (e.g. "|⏳23D", "|📊50GB") from names we display.
+    public static string CleanName(string? s)
+    {
+        if (string.IsNullOrEmpty(s)) return "";
+        var r = PanelInfo.Replace(s, "").Trim().TrimEnd('|', '-', '–', ' ');
+        return r.Length > 0 ? r : s.Trim();
+    }
 }

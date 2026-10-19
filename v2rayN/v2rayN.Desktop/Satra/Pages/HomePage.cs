@@ -122,12 +122,12 @@ public class HomePage : IPage
                 Ui.Btn(L.S("add_clip"), Ui.Kind.Primary, () => _ = AddAsync())), new Thickness(18, 14));
         }
         var cc = NetBadges.ExitCc(a);
-        var flag = Ui.T(NetBadges.Flag(cc), 26);
+        var flag = NetBadges.FlagView(cc, 26);
         var sub = ServersPage.SubName(a.Subid);
         var meta = new List<Control>();
         if (!string.IsNullOrEmpty(sub)) meta.Add(Ui.Caption(sub, P.Text3));
-        if (SatraState.I.SmartConnect) meta.Add(Ui.Pill("⚡ " + L.S("smart"), P.Accent, P.AccentSoft, 10.5));
-        var left = Ui.H(12, flag, Ui.V(3, Ui.T(a.Remarks, 15.5, FontWeight.SemiBold), Ui.H(8, meta.ToArray())));
+        if (SatraState.I.SmartConnect) meta.Add(Ui.Pill(L.S("smart"), P.Accent, P.AccentSoft, 10.5));
+        var left = Ui.H(12, flag, Ui.V(3, Ui.T(Ui.CleanName(a.Remarks), 15.5, FontWeight.SemiBold), Ui.H(8, meta.ToArray())));
         var right = Ui.H(10, ServersPage.PingPill(a.Delay), Ui.Btn(L.S("servers"), Ui.Kind.Ghost, () => SatraShell.I.Go("servers"), size: 13));
         return Ui.Enter(Ui.Card(Ui.Row(left, right), new Thickness(18, 12)));
     }
