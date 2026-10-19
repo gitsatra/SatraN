@@ -23,6 +23,11 @@ internal class Program
             .StartWithClassicDesktopLifetime(args);
     }
 
+    public static FileStream? SingleLock;
+    private static string Uid => Environment.UserName;
+    public static string LockPath => Path.Combine(Path.GetTempPath(), $"satran-{Uid}.lock");
+    public static string ShowPath => Path.Combine(Path.GetTempPath(), $"satran-{Uid}.show");
+
     private static bool OnStartup(string[]? Args)
     {
         if (Utils.IsWindows())
@@ -38,9 +43,14 @@ internal class Program
         }
         else
         {
-            _ = new Mutex(true, "v2rayN", out var bOnlyOneInstance);
-            if (!bOnlyOneInstance)
+            // A file lock is reliable across processes on Linux/macOS (a named Mutex is not, and gets GC'd).
+            try
             {
+                SingleLock = new FileStream(LockPath, FileMode.OpenOrCreate, FileAccess.ReadWrite, FileShare.None);
+            }
+            catch (IOException)
+            {
+                try { File.WriteAllText(ShowPath, "show"); } catch { }
                 return false;
             }
         }

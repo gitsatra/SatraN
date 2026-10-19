@@ -26,7 +26,7 @@ public static class L
         ["add"] = "Add", ["add_clip"] = "Add from clipboard", ["add_hint"] = "Copy a subscription link or a config, then press Add. SatraN detects what it is.",
         ["search"] = "Search servers", ["all"] = "All", ["favorites"] = "Favorites", ["ping_all"] = "Ping all", ["speed_all"] = "Speed test all", ["sort_best"] = "Best first",
         ["speed"] = "Speed test", ["use"] = "Use", ["active"] = "Active", ["tunnel"] = "Tunnel", ["exit"] = "Exit",
-        ["update_all"] = "Update all", ["update"] = "Update", ["remaining"] = "remaining", ["days_left"] = "{0} days left", ["expired"] = "Expired", ["unlimited"] = "Unlimited", ["no_expiry"] = "No expiry",
+        ["update_all"] = "Update all", ["update"] = "Update", ["remaining"] = "remaining", ["days_left"] = "{0} days left", ["expired"] = "Expired", ["unlimited"] = "Unlimited", ["no_expiry"] = "No expiry", ["core_restarted"] = "Connection engine restarted", ["core_failed"] = "Connection engine stopped — disconnected",
         ["support"] = "Support", ["renew"] = "Renew", ["devices"] = "Devices", ["limits"] = "Limits", ["owner_pin"] = "Owner PIN",
         ["hub_on"] = "This subscription supports Satra Hub", ["hub_register"] = "Connect this computer", ["hub_registered"] = "This computer is registered",
         ["last7"] = "Last 7 days", ["last30"] = "Last 30 days", ["data_per_day"] = "Data per day", ["hours_per_day"] = "Hours connected per day",
@@ -41,7 +41,7 @@ public static class L
         ["core_settings"] = "Core settings", ["dns"] = "DNS", ["routing_rules"] = "Routing rules", ["sub_settings"] = "Subscription details", ["backup"] = "Backup & restore", ["logs"] = "Logs",
         ["pick_pin"] = "Enter the owner PIN", ["set_pin"] = "Set an owner PIN (4+ characters)", ["wrong_pin"] = "Wrong PIN",
         ["online"] = "online", ["last_seen"] = "seen {0}", ["this_device"] = "This computer",
-        ["limit_reached"] = "{0} reached its limit", ["added"] = "Added", ["nothing_clip"] = "Clipboard is empty",
+        ["limit_reached"] = "{0} reached its limit", ["added"] = "Added", ["invalid_link"] = "That doesn't look like a server or subscription link", ["nothing_clip"] = "Clipboard is empty",
         ["simple_mode_hint"] = "Simple mode keeps only what most people need.", ["no_limits"] = "No limits yet. Cap all traffic per day, or block a site or program when its budget runs out.", ["tun_admin"] = "TUN needs administrator rights (you may be asked for your password).", ["limit_all_note"] = "Counts all traffic through SatraN and disconnects when it is used up.", ["limit_site_note"] = "Sites and programs are blocked once the budget is used up; 0 MB blocks them right away. Exact per-site quotas are enforced by the server through Satra Hub.",
     };
 
@@ -55,7 +55,7 @@ public static class L
         ["add"] = "افزودن", ["add_clip"] = "افزودن از کلیپ‌بورد", ["add_hint"] = "لینک اشتراک یا کانفیگ را کپی کنید و «افزودن» را بزنید؛ خودش تشخیص می‌دهد.",
         ["search"] = "جستجوی سرور", ["all"] = "همه", ["favorites"] = "علاقه‌مندی‌ها", ["ping_all"] = "پینگ همه", ["speed_all"] = "تست سرعت همه", ["sort_best"] = "بهترین‌ها اول",
         ["speed"] = "تست سرعت", ["use"] = "استفاده", ["active"] = "فعال", ["tunnel"] = "تونل", ["exit"] = "خروجی",
-        ["update_all"] = "به‌روزرسانی همه", ["update"] = "به‌روزرسانی", ["remaining"] = "باقی‌مانده", ["days_left"] = "{0} روز مانده", ["expired"] = "منقضی شده", ["unlimited"] = "نامحدود", ["no_expiry"] = "بدون انقضا",
+        ["update_all"] = "به‌روزرسانی همه", ["update"] = "به‌روزرسانی", ["remaining"] = "باقی‌مانده", ["days_left"] = "{0} روز مانده", ["expired"] = "منقضی شده", ["unlimited"] = "نامحدود", ["no_expiry"] = "بدون انقضا", ["core_restarted"] = "موتور اتصال دوباره راه‌اندازی شد", ["core_failed"] = "موتور اتصال متوقف شد — قطع شد",
         ["support"] = "پشتیبانی", ["renew"] = "تمدید", ["devices"] = "دستگاه‌ها", ["limits"] = "محدودیت‌ها", ["owner_pin"] = "رمز مالک",
         ["hub_on"] = "این اشتراک از Satra Hub پشتیبانی می‌کند", ["hub_register"] = "ثبت این کامپیوتر", ["hub_registered"] = "این کامپیوتر ثبت شده است",
         ["last7"] = "۷ روز اخیر", ["last30"] = "۳۰ روز اخیر", ["data_per_day"] = "مصرف روزانه", ["hours_per_day"] = "ساعت اتصال در روز",
@@ -70,7 +70,7 @@ public static class L
         ["core_settings"] = "تنظیمات هسته", ["dns"] = "DNS", ["routing_rules"] = "قوانین مسیریابی", ["sub_settings"] = "جزئیات اشتراک", ["backup"] = "پشتیبان‌گیری", ["logs"] = "گزارش‌ها",
         ["pick_pin"] = "رمز مالک را وارد کنید", ["set_pin"] = "یک رمز مالک بگذارید (حداقل ۴ کاراکتر)", ["wrong_pin"] = "رمز اشتباه است",
         ["online"] = "آنلاین", ["last_seen"] = "آخرین بار {0}", ["this_device"] = "این کامپیوتر",
-        ["limit_reached"] = "{0} به محدودیت رسید", ["added"] = "اضافه شد", ["nothing_clip"] = "کلیپ‌بورد خالی است",
+        ["limit_reached"] = "{0} به محدودیت رسید", ["invalid_link"] = "این متن لینک سرور یا اشتراک نیست", ["added"] = "اضافه شد", ["nothing_clip"] = "کلیپ‌بورد خالی است",
         ["simple_mode_hint"] = "حالت ساده فقط چیزهایی را نشان می‌دهد که بیشتر افراد لازم دارند.", ["no_limits"] = "هنوز محدودیتی نیست. مصرف کل روزانه را محدود کنید، یا وقتی سهمیهٔ یک سایت یا برنامه تمام شد آن را ببندید.", ["tun_admin"] = "حالت TUN به دسترسی مدیر نیاز دارد (ممکن است رمز عبور خواسته شود).", ["limit_all_note"] = "همهٔ ترافیک عبوری از SatraN شمرده می‌شود و پس از اتمام، اتصال قطع می‌شود.", ["limit_site_note"] = "پس از اتمام سهمیه، سایت یا برنامه مسدود می‌شود؛ ۰ مگابایت یعنی همین حالا مسدود شود. سهمیهٔ دقیق هر سایت را سرور از طریق Satra Hub اعمال می‌کند.",
     };
 
@@ -84,7 +84,7 @@ public static class L
         ["add"] = "Добавить", ["add_clip"] = "Добавить из буфера", ["add_hint"] = "Скопируйте ссылку подписки или конфиг и нажмите «Добавить».",
         ["search"] = "Поиск серверов", ["all"] = "Все", ["favorites"] = "Избранное", ["ping_all"] = "Пинг всех", ["speed_all"] = "Тест скорости всех", ["sort_best"] = "Лучшие сверху",
         ["speed"] = "Тест скорости", ["use"] = "Выбрать", ["active"] = "Активен", ["tunnel"] = "Туннель", ["exit"] = "Выход",
-        ["update_all"] = "Обновить все", ["update"] = "Обновить", ["remaining"] = "осталось", ["days_left"] = "Осталось {0} дн.", ["expired"] = "Истекла", ["unlimited"] = "Безлимит", ["no_expiry"] = "Бессрочно",
+        ["update_all"] = "Обновить все", ["update"] = "Обновить", ["remaining"] = "осталось", ["days_left"] = "Осталось {0} дн.", ["expired"] = "Истекла", ["unlimited"] = "Безлимит", ["no_expiry"] = "Бессрочно", ["core_restarted"] = "Ядро перезапущено", ["core_failed"] = "Ядро остановилось — отключено",
         ["support"] = "Поддержка", ["renew"] = "Продлить", ["devices"] = "Устройства", ["limits"] = "Лимиты", ["owner_pin"] = "PIN владельца",
         ["hub_on"] = "Подписка поддерживает Satra Hub", ["hub_register"] = "Подключить этот компьютер", ["hub_registered"] = "Компьютер зарегистрирован",
         ["last7"] = "7 дней", ["last30"] = "30 дней", ["data_per_day"] = "Трафик по дням", ["hours_per_day"] = "Часы подключения",
@@ -99,7 +99,7 @@ public static class L
         ["core_settings"] = "Настройки ядра", ["dns"] = "DNS", ["routing_rules"] = "Правила маршрутизации", ["sub_settings"] = "Параметры подписки", ["backup"] = "Резервная копия", ["logs"] = "Журнал",
         ["pick_pin"] = "Введите PIN владельца", ["set_pin"] = "Задайте PIN владельца (от 4 символов)", ["wrong_pin"] = "Неверный PIN",
         ["online"] = "онлайн", ["last_seen"] = "был {0}", ["this_device"] = "Этот компьютер",
-        ["limit_reached"] = "{0}: лимит исчерпан", ["added"] = "Добавлено", ["nothing_clip"] = "Буфер обмена пуст",
+        ["limit_reached"] = "{0}: лимит исчерпан", ["invalid_link"] = "Это не ссылка на сервер или подписку", ["added"] = "Добавлено", ["nothing_clip"] = "Буфер обмена пуст",
         ["simple_mode_hint"] = "Простой режим показывает только самое нужное.", ["no_limits"] = "Лимитов пока нет. Ограничьте весь трафик в день или блокируйте сайт/программу, когда их лимит исчерпан.", ["tun_admin"] = "Для TUN нужны права администратора (может потребоваться пароль).", ["limit_all_note"] = "Считается весь трафик через SatraN; при исчерпании соединение отключается.", ["limit_site_note"] = "Сайты и программы блокируются после исчерпания лимита; 0 МБ — блокировать сразу. Точные лимиты по сайтам применяет сервер через Satra Hub.",
     };
 }

@@ -53,6 +53,15 @@ public partial class MainWindow : WindowBase<MainWindowViewModel>
                 interaction.SetOutput(result);
             }).DisposeWith(disposables);
 
+            if (!Utils.IsWindows())
+            {
+                // a second launch drops a marker file instead of starting; bring this window forward
+                DispatcherTimer.Run(() =>
+                {
+                    if (File.Exists(Program.ShowPath)) { try { File.Delete(Program.ShowPath); } catch { } ShowHideWindow(true); Activate(); }
+                    return true;
+                }, TimeSpan.FromSeconds(1));
+            }
             ViewModel.ShowHideWindowInteraction.RegisterHandler(interaction =>
             {
                 ShowHideWindow(interaction.Input);

@@ -128,7 +128,7 @@ public class HomePage : IPage
         if (!string.IsNullOrEmpty(sub)) meta.Add(Ui.Caption(sub, P.Text3));
         if (SatraState.I.SmartConnect) meta.Add(Ui.Pill(L.S("smart"), P.Accent, P.AccentSoft, 10.5));
         var left = Ui.H(12, flag, Ui.V(3, Ui.T(Ui.CleanName(a.Remarks), 15.5, FontWeight.SemiBold), Ui.H(8, meta.ToArray())));
-        var right = Ui.H(10, ServersPage.PingPill(a.Delay), Ui.Btn(L.S("servers"), Ui.Kind.Ghost, () => SatraShell.I.Go("servers"), size: 13));
+        var right = Ui.H(10, ServersPage.PingPill(ServersPage.Delay(a)), Ui.Btn(L.S("servers"), Ui.Kind.Ghost, () => SatraShell.I.Go("servers"), size: 13));
         return Ui.Enter(Ui.Card(Ui.Row(left, right), new Thickness(18, 12)));
     }
 }

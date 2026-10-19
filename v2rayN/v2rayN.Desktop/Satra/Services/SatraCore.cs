@@ -86,7 +86,34 @@ public class SatraCore : ReactiveObject
         }
         if (Phase == ConnPhase.On) SatraState.I.Today().Seconds++;
         if (++_ticks % 30 == 0) SatraState.Save();
+        if (_ticks % 5 == 0) _ = WatchCoreAsync();
         Ticked?.Invoke();
+    }
+
+    private int _restarts;
+    private DateTime _restartWindow = DateTime.Now;
+    private bool _watching;
+    /// Core crash recovery: if xray dies while we are routed, restart it (max 3 per 10 min), else disconnect cleanly.
+    private async Task WatchCoreAsync()
+    {
+        if (_watching || Phase != ConnPhase.On || Cfg.TunModeItem.EnableTun) return;
+        if (CoreManager.Instance.CoreRunning) return;
+        _watching = true;
+        try
+        {
+            if ((DateTime.Now - _restartWindow).TotalMinutes > 10) { _restarts = 0; _restartWindow = DateTime.Now; }
+            if (++_restarts <= 3)
+            {
+                Logging.SaveLog("satra: core exited, restarting");
+                await Main.Reload();
+                await Task.Delay(1500);
+                if (CoreManager.Instance.CoreRunning) { Toast?.Invoke(L.S("core_restarted")); return; }
+            }
+            Toast?.Invoke(L.S("core_failed"));
+            await DisconnectAsync();
+        }
+        catch (Exception ex) { Logging.SaveLog("satra watch", ex); }
+        finally { _watching = false; }
     }
 
     public async Task ToggleAsync()
@@ -219,9 +246,22 @@ public class SatraCore : ReactiveObject
             Toast?.Invoke(L.S("nothing_clip"));
             return false;
         }
+        var t = text.Trim();
+        var looksValid = t.Contains("://") || t.StartsWith('{') || (t.Length >= 16 && System.Text.RegularExpressions.Regex.IsMatch(t, @"^[A-Za-z0-9+/=_\-\r\n]+$"));
+        if (!looksValid)
+        {
+            Toast?.Invoke(L.S("invalid_link"));
+            return false;
+        }
         var before = (await AppManager.Instance.SubItems())?.Count ?? 0;
+        var beforeP = (await AppManager.Instance.ProfileItems(""))?.Count ?? 0;
         await Main.AddServerViaClipboardAsync(text);
         var subs = await AppManager.Instance.SubItems() ?? [];
+        if (subs.Count == before && ((await AppManager.Instance.ProfileItems(""))?.Count ?? 0) == beforeP)
+        {
+            Toast?.Invoke(L.S("invalid_link"));
+            return false;
+        }
         if (subs.Count > before)
         {
             // a subscription was added: fetch its servers immediately and make it the active group

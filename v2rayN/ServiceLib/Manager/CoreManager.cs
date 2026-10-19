@@ -13,6 +13,7 @@ public class CoreManager
     private WindowsJobService? _processJob;
 
     private ProcessService? _processService;
+    public bool CoreRunning => _processService is { HasExited: false };
     private ProcessService? _processPreService;
     private bool _linuxSudo = false;
     private Func<bool, string, Task>? _updateFunc;

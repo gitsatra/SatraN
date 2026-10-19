@@ -118,6 +118,11 @@ public partial class App : Application
         {
             Logging.SaveLog("CurrentDomain_UnhandledException", (Exception)e.ExceptionObject);
         }
+        if (e.IsTerminating)
+        {
+            // never leave the OS pointing at a proxy that is about to disappear
+            try { ServiceLib.Handler.SysProxy.SysProxyHandler.UpdateSysProxy(AppManager.Instance.Config, true).Wait(3000); } catch { }
+        }
     }
 
     private void TaskScheduler_UnobservedTaskException(object? sender, UnobservedTaskExceptionEventArgs e)
@@ -139,6 +144,12 @@ public partial class App : Application
         {
             Logging.SaveLog("MenuAddServerViaClipboardClick", ex);
         }
+    }
+
+    private async void MenuToggleConnect_Click(object? sender, EventArgs e)
+    {
+        try { if (v2rayN.Desktop.Satra.Services.SatraCore.I is { } c) await c.ToggleAsync(); }
+        catch (Exception ex) { Logging.SaveLog("MenuToggleConnect", ex); }
     }
 
     private async void MenuExit_Click(object? sender, EventArgs e)
