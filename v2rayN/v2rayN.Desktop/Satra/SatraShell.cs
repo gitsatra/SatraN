@@ -71,6 +71,7 @@ public class SatraShell : Grid
         AddNav("servers", "≡", new ServersPage());
         AddNav("subs", "▣", new SubsPage());
         AddNav("usage", "▥", new UsagePage());
+        AddNav("security", "🔒", new SecurityPage());
         AddNav("settings", "⚙\uFE0E", new SettingsPage());
         Go("home");
 

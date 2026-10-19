@@ -11,7 +11,7 @@ permissions:
   contents: read
 
 env:
-  XRAY_VERSION: v26.3.27
+  XRAY_VERSION: v26.10.17
   DOTNET_NOLOGO: true
 
 jobs:
