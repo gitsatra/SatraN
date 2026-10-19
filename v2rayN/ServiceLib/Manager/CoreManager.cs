@@ -314,9 +314,9 @@ public class CoreManager
 
         try
         {
-            // SatraN .deb grants cap_net_admin to the bundled cores in postinst (marker "<core>.caps"),
-            // so the VPN (TUN) starts without asking for a password.
-            var hasCaps = Utils.IsLinux() && File.Exists(fileName + ".caps");
+            // SatraN: prefer CAP_NET_ADMIN on the live binary (user data dir). Marker alone is not enough —
+            // copies from /opt drop capabilities. TunPrivilege.EnsureAsync repairscaps before connect.
+            var hasCaps = Utils.IsLinux() && File.Exists(fileName + ".caps") && HasCapNetAdmin(fileName);
             if (mayNeedSudo && !hasCaps
                 && ShouldRunAsSudo(isTunLaunch, coreInfo.CoreType, Utils.IsNonWindows()))
             {
@@ -376,6 +376,27 @@ public class CoreManager
                 _processJob?.AddProcess(processHandle);
             }
             catch { }
+        }
+    }
+
+    private static bool HasCapNetAdmin(string path)
+    {
+        try
+        {
+            var psi = new System.Diagnostics.ProcessStartInfo("getcap", [path])
+            {
+                UseShellExecute = false,
+                RedirectStandardOutput = true,
+                RedirectStandardError = true,
+            };
+            using var p = System.Diagnostics.Process.Start(psi)!;
+            var o = p.StandardOutput.ReadToEnd();
+            p.WaitForExit(2000);
+            return o.Contains("cap_net_admin", StringComparison.OrdinalIgnoreCase);
+        }
+        catch
+        {
+            return false;
         }
     }
 

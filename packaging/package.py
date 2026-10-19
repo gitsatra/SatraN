@@ -88,10 +88,23 @@ elif rid.startswith("linux"):
     with open(os.path.join(root, "DEBIAN/postinst"), "w") as f:
         f.write("""#!/bin/sh
 set -e
-# VPN mode without password prompts: let the bundled cores create the TUN device and routes
-for c in /opt/satran/bin/sing_box/sing-box /opt/satran/bin/xray/xray; do
-  [ -x "$c" ] || continue
-  if command -v setcap >/dev/null 2>&1 && setcap cap_net_admin,cap_net_bind_service,cap_net_raw+ep "$c"; then touch "$c.caps"; else rm -f "$c.caps"; fi
+# VPN mode without password prompts: let the bundled cores create the TUN device and routes.
+# The app also copies cores into ~/.local/share/SatraN/bin — those copies drop capabilities,
+# so refresh caps on any existing user copies too.
+apply_caps() {
+  c="$1"
+  [ -x "$c" ] || return 0
+  if command -v setcap >/dev/null 2>&1 && setcap cap_net_admin,cap_net_bind_service,cap_net_raw+ep "$c"; then
+    touch "$c.caps"
+  else
+    rm -f "$c.caps"
+  fi
+}
+for c in /opt/satran/bin/sing_box/sing-box /opt/satran/bin/xray/xray; do apply_caps "$c"; done
+for home in /home/*; do
+  [ -d "$home" ] || continue
+  apply_caps "$home/.local/share/SatraN/bin/sing_box/sing-box"
+  apply_caps "$home/.local/share/SatraN/bin/xray/xray"
 done
 command -v gtk-update-icon-cache >/dev/null 2>&1 && gtk-update-icon-cache -f -t /usr/share/icons/hicolor || true
 command -v update-desktop-database >/dev/null 2>&1 && update-desktop-database -q /usr/share/applications || true

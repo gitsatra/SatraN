@@ -241,6 +241,8 @@ public static class FileUtils
         // Check if the file already exists and if we should overwrite it
         if (!overwrite && File.Exists(shFilePath))
         {
+            // Still ensure +x — older installs left the script non-executable (CliWrap → Permission denied)
+            await Utils.SetLinuxChmod(shFilePath);
             return shFilePath;
         }
 
