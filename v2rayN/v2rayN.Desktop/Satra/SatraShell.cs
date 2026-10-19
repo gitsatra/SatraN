@@ -37,7 +37,7 @@ public class SatraShell : Grid
 
         // sidebar
         var side = new Border { Background = P.B(Color.Parse("#0E0E11")), Padding = new Thickness(14, 22, 14, 16), BorderBrush = P.B(P.Separator), BorderThickness = new Thickness(0, 0, 1, 0) };
-        var logoDot = Logo(30);
+        var logoDot = Logo(34);
         var top = new StackPanel { Spacing = 22 };
         top.Children.Add(Ui.H(10, logoDot, Ui.T("SatraN", 20, FontWeight.Bold)));
         top.Children.Add(_nav);
@@ -81,27 +81,34 @@ public class SatraShell : Grid
 
     private static readonly List<Border> Logos = [];
 
-    /// The Satra "S" mark (same geometry as the Android launcher icon); orange, green when connected.
+    private const string Shield = "F0 M54,26 C61,31 68,34 76,35 L76,50 C76,65 67,75 54,82 C41,75 32,65 32,50 L32,35 C40,34 47,31 54,26 Z M54,41 L71,55.5 L67.6,59.3 L54,47.6 L40.4,59.3 L37,55.5 Z M50.4,57 A3.6,3.6 0 1 1 56.9,59.1 L54,73 L51.1,59.1 A3.6,3.6 0 0 1 50.4,57 Z";
+
+    /// The Satra shield mark (same vector as the Android icon): orange gradient on near-black, green when connected.
     public static Border Logo(double size)
     {
-        var path = new Avalonia.Controls.Shapes.Path
-        {
-            Data = Geometry.Parse("M65.5,35.5 A11.5,10.75 0 1 0 54,51.25 A11.5,10.75 0 1 1 42.5,67"),
-            Stroke = Brushes.White, StrokeThickness = 8, StrokeLineCap = PenLineCap.Round, StrokeJoin = PenLineJoin.Round,
-        };
+        var path = new Avalonia.Controls.Shapes.Path { Data = Geometry.Parse(Shield) };
+        path.Transitions = new Transitions { new BrushTransition { Property = Avalonia.Controls.Shapes.Shape.FillProperty, Duration = TimeSpan.FromMilliseconds(600) } };
         var canvas = new Canvas { Width = 108, Height = 108, Children = { path } };
-        var b = new Border { Width = size, Height = size, CornerRadius = new CornerRadius(size * 24 / 108), ClipToBounds = true, Child = new Viewbox { Child = canvas }, FlowDirection = FlowDirection.LeftToRight };
-        b.Transitions = new Transitions { new BrushTransition { Property = Border.BackgroundProperty, Duration = TimeSpan.FromMilliseconds(600) } };
+        var b = new Border
+        {
+            Width = size, Height = size, CornerRadius = new CornerRadius(size * 24 / 108), ClipToBounds = true, FlowDirection = FlowDirection.LeftToRight,
+            Background = new LinearGradientBrush { StartPoint = new RelativePoint(0, 0, RelativeUnit.Relative), EndPoint = new RelativePoint(0, 1, RelativeUnit.Relative), GradientStops = { new GradientStop(Color.Parse("#1E1E21"), 0), new GradientStop(Color.Parse("#121214"), 1) } },
+            Child = new Viewbox { Child = canvas },
+        };
         PaintLogo(b, SatraCore.I?.Phase == ConnPhase.On);
         Logos.Add(b);
         return b;
     }
 
-    private static void PaintLogo(Border b, bool on) => b.Background = new LinearGradientBrush
+    private static void PaintLogo(Border b, bool on)
     {
-        StartPoint = new RelativePoint(0, 0, RelativeUnit.Relative), EndPoint = new RelativePoint(1, 1, RelativeUnit.Relative),
-        GradientStops = { new GradientStop(Color.Parse(on ? "#3DDC84" : "#FF9A3D"), 0), new GradientStop(Color.Parse(on ? "#12A150" : "#FF5E00"), 1) },
-    };
+        if (b.Child is not Viewbox { Child: Canvas { Children: [Avalonia.Controls.Shapes.Path p] } }) return;
+        p.Fill = new LinearGradientBrush
+        {
+            StartPoint = new RelativePoint(0, 0, RelativeUnit.Relative), EndPoint = new RelativePoint(1, 1, RelativeUnit.Relative),
+            GradientStops = { new GradientStop(Color.Parse(on ? "#4ADE80" : "#FF9A1A"), 0), new GradientStop(Color.Parse(on ? "#16A34A" : "#FF4D00"), 1) },
+        };
+    }
 
     private void OnCoreChanged()
     {
