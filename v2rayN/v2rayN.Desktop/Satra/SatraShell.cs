@@ -29,6 +29,7 @@ public class SatraShell : Grid
     public SatraShell(Window window)
     {
         I = this;
+        Logos.Clear();
         Window = window;
         FlowDirection = L.Rtl ? FlowDirection.RightToLeft : FlowDirection.LeftToRight;
         Background = P.B(P.Bg);
@@ -36,9 +37,7 @@ public class SatraShell : Grid
 
         // sidebar
         var side = new Border { Background = P.B(Color.Parse("#0E0E11")), Padding = new Thickness(14, 22, 14, 16), BorderBrush = P.B(P.Separator), BorderThickness = new Thickness(0, 0, 1, 0) };
-        var logoDot = new Border { Width = 30, Height = 30, CornerRadius = new CornerRadius(10), Background = new LinearGradientBrush { StartPoint = new RelativePoint(0, 0, RelativeUnit.Relative), EndPoint = new RelativePoint(1, 1, RelativeUnit.Relative), GradientStops = { new GradientStop(Color.Parse("#FF8A3D"), 0), new GradientStop(Color.Parse("#E04F00"), 1) } }, Child = Ui.T("S", 16, FontWeight.Black, Colors.White) };
-        ((TextBlock)logoDot.Child).HorizontalAlignment = HorizontalAlignment.Center;
-        ((TextBlock)logoDot.Child).VerticalAlignment = VerticalAlignment.Center;
+        var logoDot = Logo(30);
         var top = new StackPanel { Spacing = 22 };
         top.Children.Add(Ui.H(10, logoDot, Ui.T("SatraN", 20, FontWeight.Bold)));
         top.Children.Add(_nav);
@@ -80,9 +79,34 @@ public class SatraShell : Grid
         OnCoreChanged();
     }
 
+    private static readonly List<Border> Logos = [];
+
+    /// The Satra "S" mark (same geometry as the Android launcher icon); orange, green when connected.
+    public static Border Logo(double size)
+    {
+        var path = new Avalonia.Controls.Shapes.Path
+        {
+            Data = Geometry.Parse("M65.5,35.5 A11.5,10.75 0 1 0 54,51.25 A11.5,10.75 0 1 1 42.5,67"),
+            Stroke = Brushes.White, StrokeThickness = 8, StrokeLineCap = PenLineCap.Round, StrokeJoin = PenLineJoin.Round,
+        };
+        var canvas = new Canvas { Width = 108, Height = 108, Children = { path } };
+        var b = new Border { Width = size, Height = size, CornerRadius = new CornerRadius(size * 24 / 108), ClipToBounds = true, Child = new Viewbox { Child = canvas }, FlowDirection = FlowDirection.LeftToRight };
+        b.Transitions = new Transitions { new BrushTransition { Property = Border.BackgroundProperty, Duration = TimeSpan.FromMilliseconds(600) } };
+        PaintLogo(b, SatraCore.I?.Phase == ConnPhase.On);
+        Logos.Add(b);
+        return b;
+    }
+
+    private static void PaintLogo(Border b, bool on) => b.Background = new LinearGradientBrush
+    {
+        StartPoint = new RelativePoint(0, 0, RelativeUnit.Relative), EndPoint = new RelativePoint(1, 1, RelativeUnit.Relative),
+        GradientStops = { new GradientStop(Color.Parse(on ? "#3DDC84" : "#FF9A3D"), 0), new GradientStop(Color.Parse(on ? "#12A150" : "#FF5E00"), 1) },
+    };
+
     private void OnCoreChanged()
     {
         _connectGlow.Opacity = SatraCore.I.Phase == ConnPhase.On ? 1 : 0;
+        foreach (var l in Logos) PaintLogo(l, SatraCore.I.Phase == ConnPhase.On);
         if (_pages.TryGetValue(_current, out var p)) p.Refresh();
     }
 
