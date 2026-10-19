@@ -69,7 +69,7 @@ internal class Program
     {
         var builder = AppBuilder.Configure<App>()
            .UsePlatformDetect()
-           //.WithInterFont()
+           .WithInterFont() // Semi theme asks for fonts:Inter; bundle it so systems without Inter/Segoe/Helvetica do not crash
            .WithFontByDefault()
 #if DEBUG
            .WithDeveloperTools()

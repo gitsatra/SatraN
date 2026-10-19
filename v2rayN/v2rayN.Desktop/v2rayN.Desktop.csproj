@@ -21,6 +21,7 @@
 			<TreatAsUsed>true</TreatAsUsed>
 		</PackageReference>
 		<PackageReference Include="Avalonia.Desktop" />
+		<PackageReference Include="Avalonia.Fonts.Inter" />
 		<PackageReference Condition="'$(Configuration)' == 'Debug'" Include="AvaloniaUI.DiagnosticsSupport" />
 		<PackageReference Include="DialogHost.Avalonia" />
 		<PackageReference Include="ReactiveUI.Avalonia" />
