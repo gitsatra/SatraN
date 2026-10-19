@@ -75,7 +75,7 @@ public class HomePage : IPage
         _downTot.Text = $"{L.S("session")} {Ui.Bytes(c.SessionDown)}";
         _upTot.Text = $"{L.S("session")} {Ui.Bytes(c.SessionUp)}";
         var d = SatraState.I.Today();
-        _today.Text = Ui.Ltr($"↓ {Ui.Bytes(d.Down)}  ↑ {Ui.Bytes(d.Up)}");
+        _today.Text = Ui.Ltr($"↓ {Ui.Bytes(d.Down)}  ↑ {Ui.Bytes(d.Up)}  Σ {Ui.Bytes(d.Down + d.Up)}");
         _spark.LineColor = c.Phase == ConnPhase.On ? P.Success : P.Accent;
         _spark.SetData(c.History);
     }

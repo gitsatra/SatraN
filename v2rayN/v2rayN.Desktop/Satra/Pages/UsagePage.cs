@@ -11,7 +11,7 @@ public class UsagePage : IPage
     private readonly StackPanel _body = new() { Spacing = 14, Margin = new Thickness(0, 18, 0, 28) };
     private readonly BarChart _data = new() { BarColor = P.Accent, Format = Ui.Bytes };
     private readonly BarChart _hours = new() { BarColor = P.Info, Height = 120, Format = v => $"{v:0.#} h" };
-    private readonly TextBlock _sumDown = Ui.Num(Ui.T("", 22, FontWeight.Bold)), _sumUp = Ui.Num(Ui.T("", 22, FontWeight.Bold)), _sumHours = Ui.Num(Ui.T("", 22, FontWeight.Bold));
+    private readonly TextBlock _sumDown = Ui.Num(Ui.T("", 22, FontWeight.Bold)), _sumUp = Ui.Num(Ui.T("", 22, FontWeight.Bold)), _sumTotal = Ui.Num(Ui.T("", 22, FontWeight.Bold)), _sumHours = Ui.Num(Ui.T("", 22, FontWeight.Bold));
     private readonly StackPanel _limits = new() { Spacing = 0 };
     private int _days = 7;
     private readonly Border _seg7, _seg30;
@@ -31,11 +31,12 @@ public class UsagePage : IPage
         var seg = new Border { Background = P.B(P.Fill), CornerRadius = Ui.RPill, Padding = new Thickness(3), Child = Ui.H(2, _seg7, _seg30) };
         _root.Children.Add(Ui.Row(Ui.Title(L.S("usage")), seg));
 
-        var sums = new Grid { ColumnDefinitions = new ColumnDefinitions("*,*,*") };
+        var sums = new Grid { ColumnDefinitions = new ColumnDefinitions("*,*,*,*") };
         Control S(string l, TextBlock v, int col) { var x = Ui.V(4, Ui.Section(l), v); Grid.SetColumn(x, col); return x; }
         sums.Children.Add(S(L.S("download"), _sumDown, 0));
         sums.Children.Add(S(L.S("upload"), _sumUp, 1));
-        sums.Children.Add(S(L.S("hours_per_day").Split(' ')[0], _sumHours, 2));
+        sums.Children.Add(S(L.S("total"), _sumTotal, 2));
+        sums.Children.Add(S(L.S("hours_per_day").Split(' ')[0], _sumHours, 3));
         _body.Children.Add(Ui.Card(sums, new Thickness(20, 16)));
         _body.Children.Add(Ui.Card(Ui.V(12, Ui.Section(L.S("data_per_day")), _data), new Thickness(20, 16)));
         _body.Children.Add(Ui.Card(Ui.V(12, Ui.Section(L.S("hours_per_day")), _hours), new Thickness(20, 16)));
@@ -61,6 +62,7 @@ public class UsagePage : IPage
         _hours.SetData(u.Select(x => (x?.Seconds ?? 0) / 3600.0).ToArray(), labels);
         _sumDown.Text = Ui.Bytes(u.Sum(x => x?.Down ?? 0));
         _sumUp.Text = Ui.Bytes(u.Sum(x => x?.Up ?? 0));
+        _sumTotal.Text = Ui.Bytes(u.Sum(x => (x?.Up ?? 0) + (x?.Down ?? 0)));
         _sumHours.Text = $"{u.Sum(x => x?.Seconds ?? 0) / 3600.0:0.#} h";
         BuildLimits();
     }
