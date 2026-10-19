@@ -3,12 +3,11 @@ using System.Net;
 using System.Net.Http;
 using System.Net.Sockets;
 using System.Text.Json.Nodes;
-using System.Text.RegularExpressions;
 
 namespace v2rayN.Desktop.Satra.Services;
 
 /// <summary>CDN / tunnel detection and exit-country bookkeeping for server rows.</summary>
-public static partial class NetBadges
+public static class NetBadges
 {
     private static readonly (string name, string[] cidrs)[] Cdns =
     [
@@ -77,27 +76,16 @@ public static partial class NetBadges
         return v;
     }
 
-    [GeneratedRegex(@"\b([A-Z]{2})\b")]
-    private static partial Regex CcRe();
+    /// Stable per-config key (survives subscription refreshes, which re-create index ids).
+    public static string GeoKey(ProfileItemModel p) => Pages.ServersPage.Key(p);
 
-    /// <summary>Exit country for a server. Taken once from the core's real-ping IP lookup and kept until the
-    /// subscription is updated or the user connects to it (so flags don't flip between entry and exit IPs).</summary>
-    public static string? ExitCc(ProfileItemModel p)
-    {
-        var st = SatraState.I;
-        if (st.Geo.TryGetValue(p.IndexId, out var g) && g.Cc.Length == 2) return g.Cc;
-        var m = CcRe().Match(p.IpInfo ?? "");
-        if (m.Success && m.Groups[1].Value != "IP")
-        {
-            st.Geo[p.IndexId] = new ExitGeo { Cc = m.Groups[1].Value, Ip = p.IpInfo ?? "", At = DateTimeOffset.UtcNow.ToUnixTimeSeconds() };
-            return m.Groups[1].Value;
-        }
-        return null;
-    }
+    /// <summary>Real exit country measured by <see cref="ExitProbe"/>; null (blank flag) when unknown.</summary>
+    public static string? ExitCc(ProfileItemModel p) =>
+        SatraState.I.Geo.TryGetValue(GeoKey(p), out var g) && g.Cc.Length == 2 ? g.Cc : null;
 
-    public static void ForgetExit(IEnumerable<string> indexIds)
+    public static void ForgetExit(IEnumerable<ProfileItemModel> items)
     {
-        foreach (var id in indexIds) SatraState.I.Geo.Remove(id);
+        lock (SatraState.I.Geo) foreach (var p in items) SatraState.I.Geo.Remove(GeoKey(p));
     }
 
     /// Windows has no colour flag glyphs (it shows two letters), so draw a neat code tile there.

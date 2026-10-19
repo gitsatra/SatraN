@@ -149,9 +149,8 @@ public class SatraCore : ReactiveObject
             {
                 SessionUp = SessionDown = 0;
                 Since = DateTime.Now;
-                if (Active != null) NetBadges.ForgetExit([Active.IndexId]); // re-check exit IP on connect
                 Set(ConnPhase.On);
-                if (Active != null && r.GetValidIp() is { Length: > 0 }) _ = RefreshActiveExitAsync();
+                _ = RefreshActiveExitAsync(); // re-check the exit IP of the config we connected to
             }
             else
             {
@@ -174,17 +173,18 @@ public class SatraCore : ReactiveObject
         {
             var a = Active;
             if (a == null) return;
-            var webProxy = new System.Net.WebProxy($"socks5://{Global.Loopback}:{AppManager.Instance.GetLocalPort(EInboundProtocol.socks)}");
-            var ip = await ConnectionHandler.GetIPInfo(webProxy);
-            if (ip is { } info && info.Country.Length == 2)
+            var r = await ExitProbe.LookupAsync(AppManager.Instance.GetLocalPort(EInboundProtocol.socks));
+            if (r is { } v)
             {
-                SatraState.I.Geo[a.IndexId] = new ExitGeo { Cc = info.Country.ToUpperInvariant(), Ip = info.Ip ?? "", At = DateTimeOffset.UtcNow.ToUnixTimeSeconds() };
+                lock (SatraState.I.Geo) SatraState.I.Geo[NetBadges.GeoKey(a)] = new ExitGeo { Cc = v.cc, Ip = v.ip, At = DateTimeOffset.UtcNow.ToUnixTimeSeconds() };
                 SatraState.Save();
                 Changed?.Invoke();
             }
         }
         catch { }
     }
+
+    public void RaiseChanged() => Changed?.Invoke();
 
     public async Task DisconnectAsync()
     {
@@ -269,6 +269,7 @@ public class SatraCore : ReactiveObject
             await Main.UpdateSubscriptionProcess(s.Id, false);
             _ = SubInfo.RefreshAsync(s);
         }
+        _ = Task.Run(() => ExitProbe.ProbeAsync()); // learn real exit countries for the new configs
         Toast?.Invoke(L.S("added"));
         Changed?.Invoke();
         return true;
@@ -286,9 +287,11 @@ public class SatraCore : ReactiveObject
             }
         }
         // exit IPs are re-learned after a subscription update
-        NetBadges.ForgetExit(Profiles.ProfileItems.Where(p => subId == null || p.Subid == subId).Select(p => p.IndexId).ToList());
         SatraState.Save();
         Changed?.Invoke();
+        // re-measure exit IPs after a subscription update (old flags stay visible until replaced)
+        var again = Profiles.ProfileItems.Where(p => subId == null || p.Subid == subId).ToList();
+        _ = Task.Run(() => ExitProbe.ProbeAsync(again));
     }
 
     private async Task AutoUpdateSubsAsync(bool startup = false)
@@ -296,6 +299,7 @@ public class SatraCore : ReactiveObject
         try
         {
             if (SatraState.I.AutoUpdate && (await AppManager.Instance.SubItems())?.Count > 0) await UpdateSubsAsync();
+            else if (startup) _ = Task.Run(() => ExitProbe.ProbeAsync());
         }
         catch (Exception ex)
         {

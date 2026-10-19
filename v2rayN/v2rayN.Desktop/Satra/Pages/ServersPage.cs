@@ -108,14 +108,14 @@ public class ServersPage : IPage
         var q = _search.Text?.Trim() ?? "";
         IEnumerable<ProfileItemModel> view = items;
         if (q.Length > 0) view = view.Where(p => (p.Remarks ?? "").Contains(q, StringComparison.OrdinalIgnoreCase) || (p.Address ?? "").Contains(q, StringComparison.OrdinalIgnoreCase));
-        if (_favOnly) view = view.Where(p => SatraState.I.Favorites.Contains(p.IndexId));
+        if (_favOnly) view = view.Where(p => SatraState.I.Favorites.Contains(Key(p)));
         var fav = SatraState.I.Favorites;
         view = _sortBest
             ? view.OrderBy(p => Delay(p) > 0 ? Delay(p) : int.MaxValue)
-            : view.OrderByDescending(p => fav.Contains(p.IndexId));
+            : view.OrderByDescending(p => fav.Contains(Key(p)));
         var list = view.ToList();
         var active = AppManager.Instance.Config.IndexId;
-        var sig = string.Join(",", list.Select(p => $"{p.IndexId}:{p.Delay}:{p.SpeedVal}:{p.IpInfo}:{fav.Contains(p.IndexId)}:{p.IndexId == active}:{_cdn.GetValueOrDefault(p.Address ?? "")}"));
+        var sig = string.Join(",", list.Select(p => $"{p.IndexId}:{p.Delay}:{p.SpeedVal}:{NetBadges.ExitCc(p)}:{fav.Contains(Key(p))}:{p.IndexId == active}:{_cdn.GetValueOrDefault(p.Address ?? "")}"));
         FlushPings();
         if (!force && sig == _sig) return;
         _sig = sig;
@@ -136,10 +136,10 @@ public class ServersPage : IPage
 
     private Control RowFor(ProfileItemModel p, bool isActive)
     {
-        var fav = SatraState.I.Favorites.Contains(p.IndexId);
+        var fav = SatraState.I.Favorites.Contains(Key(p));
         var star = Ui.IconBtn(fav ? "★" : "☆", () =>
         {
-            if (!SatraState.I.Favorites.Remove(p.IndexId)) SatraState.I.Favorites.Add(p.IndexId);
+            if (!SatraState.I.Favorites.Remove(Key(p))) SatraState.I.Favorites.Add(Key(p));
             SatraState.Save();
             Rebuild(true);
         }, L.S("favorites"), fav ? P.Warning : P.Text3, 15);
