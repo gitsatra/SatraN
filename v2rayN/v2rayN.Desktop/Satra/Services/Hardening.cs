@@ -11,7 +11,7 @@ namespace v2rayN.Desktop.Satra.Services;
 /// </summary>
 public static class Hardening
 {
-    public const int Revision = 1;
+    public const int Revision = 2;
 
     public static async Task ApplyAsync()
     {
@@ -35,8 +35,12 @@ public static class Hardening
                 }
                 if (cfg.Mux4RayItem != null) cfg.Mux4RayItem.XudpProxyUDP443 = "allow";
                 if (string.IsNullOrEmpty(cfg.CoreBasicItem.DefFingerprint)) cfg.CoreBasicItem.DefFingerprint = "chrome";
+                // VPN mode = sing-box TUN: auto-route + strict route, IPv4 AND IPv6 captured (no v6 leak), DNS hijacked
+                cfg.TunModeItem.AutoRoute = true;
                 cfg.TunModeItem.StrictRoute = true;
-                cfg.TunModeItem.EnableIPv6Address = false;
+                cfg.TunModeItem.EnableIPv6Address = true;
+                if (string.IsNullOrEmpty(cfg.TunModeItem.Stack)) cfg.TunModeItem.Stack = "mixed";
+                if (st.Hardened < 2) st.Mode = "tun"; // VPN (whole device) is the default mode
                 if (OperatingSystem.IsWindows()) EnsureHotkey(cfg);
                 await ConfigHandler.SaveConfig(cfg);
                 st.Hardened = Revision;

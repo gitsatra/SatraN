@@ -20,7 +20,7 @@ public class SettingsPage : IPage
         _root.Children.Add(sv);
     }
 
-    private static Control Segmented(string[] labels, int selected, Action<int> pick)
+    public static Control Segmented(string[] labels, int selected, Action<int> pick)
     {
         var row = new UniformGrid { Rows = 1 };
         var host = new Border { Background = P.B(P.Fill), CornerRadius = Ui.RCtl, Padding = new Thickness(3), Child = row };
@@ -53,30 +53,6 @@ public class SettingsPage : IPage
         _body.Children.Clear();
         var connected = SatraCore.I.Phase == ConnPhase.On;
 
-        // connection mode
-        var modes = new[] { "proxy", "tun", "socks" };
-        var modeIdx = Math.Max(0, Array.IndexOf(modes, st.Mode));
-        var port = AppManager.Instance.GetLocalPort(EInboundProtocol.socks);
-        var modeKids = new List<Control>
-        {
-            Segmented([L.S("mode_proxy"), L.S("mode_tun"), L.S("mode_proxy_only")], modeIdx, i =>
-            {
-                if (st.Mode == modes[i]) return;
-                st.Mode = modes[i];
-                _modeChanged = true;
-                SatraState.Save();
-                if (SatraCore.I.Phase == ConnPhase.On) SatraCore.I.Notify(L.S("reconnect_note"));
-                Refresh();
-            }),
-        };
-        if (st.Mode == "socks")
-            modeKids.Add(new Border { Background = P.B(P.InfoSoft), CornerRadius = Ui.RCtl, Padding = new Thickness(12, 8), Child = Ui.T(L.F("proxy_addr", $"{Global.Loopback}:{port}", $"{Global.Loopback}:{port}"), 13, FontWeight.Medium, P.Info, TextWrapping.Wrap) });
-        if (st.Mode == "tun" && !Utils.IsWindows())
-            modeKids.Add(Ui.Caption(L.S("tun_admin"), P.Text3));
-        if (connected && _modeChanged) modeKids.Add(Ui.Caption(L.S("reconnect_note"), P.Warning));
-        _body.Children.Add(Ui.Section(L.S("mode")));
-        _body.Children.Add(Ui.Card(Ui.V(10, modeKids.ToArray()), new Thickness(14)));
-
         // routing (Iran / Russia only)
         _body.Children.Add(Ui.Section(L.S("routing")));
         var routes = new[] { "iran", "russia" };
@@ -88,6 +64,10 @@ public class SettingsPage : IPage
             SatraCore.I.Notify(L.S("routing") + " · OK");
             Refresh();
         }), new Thickness(14)));
+        _body.Children.Add(Ui.Group(
+            Ui.ListRow(L.S("smart_routing"), L.S("smart_routing_d"), Ui.Switch(st.SmartRouting, v => { st.SmartRouting = v; SatraState.Save(); _ = SatraCore.I.ApplyLocalLimitsAsync(); })),
+            Ui.ListRow(L.S("exceptions"), L.F("exceptions_d", st.ViaVpn.Count, st.Direct.Count), null, ExceptionsSheet, "⇄"),
+            Ui.ListRow(L.S("kill_switch"), L.S("kill_switch_d"), Ui.Switch(st.KillSwitch, v => { st.KillSwitch = v; SatraState.Save(); }))));
 
         // general
         _body.Children.Add(Ui.Section(L.S("settings")));
@@ -141,5 +121,25 @@ public class SettingsPage : IPage
         _body.Children.Add(Ui.Section(L.S("about")));
         _body.Children.Add(Ui.Group(
             Ui.ListRow("SatraN", $"v{Identity.Version} · Xray · v2rayN {Utils.GetVersionInfo()} · {Identity.Os}", Ui.Btn("Exit", Ui.Kind.Danger, () => _ = AppManager.Instance.AppExitAsync(true), size: 13), glyph: "S", glyphColor: P.Accent)));
+    }
+
+    private void ExceptionsSheet()
+    {
+        var st = SatraState.I;
+        var via = Ui.Input("youtube.com, x.com");
+        via.Text = string.Join("\n", st.ViaVpn); via.AcceptsReturn = true; via.Height = 110;
+        var dir = Ui.Input("bank.ir, digikala.com");
+        dir.Text = string.Join("\n", st.Direct); dir.AcceptsReturn = true; dir.Height = 110;
+        Action close = () => { };
+        static List<string> Parse(string? t) => (t ?? "").Split(['\n', ',', ' '], StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries).Select(x => x.ToLowerInvariant()).Distinct().ToList();
+        var save = Ui.Btn(L.S("save"), Ui.Kind.Primary, () =>
+        {
+            st.ViaVpn = Parse(via.Text); st.Direct = Parse(dir.Text);
+            SatraState.Save();
+            _ = SatraCore.I.ApplyLocalLimitsAsync();
+            close();
+            Refresh();
+        });
+        close = SatraShell.I.Sheet(L.S("exceptions"), Ui.V(10, Ui.Section(L.S("always_vpn")), via, Ui.Section(L.S("always_direct")), dir, Ui.Caption(L.S("exceptions_hint"), P.Text3), save), 480);
     }
 }

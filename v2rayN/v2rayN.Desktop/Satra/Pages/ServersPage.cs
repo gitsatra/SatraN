@@ -115,7 +115,7 @@ public class ServersPage : IPage
             : view.OrderByDescending(p => fav.Contains(Key(p)));
         var list = view.ToList();
         var active = AppManager.Instance.Config.IndexId;
-        var sig = string.Join(",", list.Select(p => $"{p.IndexId}:{p.Delay}:{p.SpeedVal}:{NetBadges.ExitCc(p)}:{fav.Contains(Key(p))}:{p.IndexId == active}:{_cdn.GetValueOrDefault(p.Address ?? "")}"));
+        var sig = string.Join(",", list.Select(p => $"{p.IndexId}:{p.Delay}:{p.SpeedVal}:{NetBadges.ExitCc(p)}:{fav.Contains(Key(p))}:{p.IndexId == active}"));
         FlushPings();
         if (!force && sig == _sig) return;
         _sig = sig;
@@ -149,11 +149,6 @@ public class ServersPage : IPage
         flag.VerticalAlignment = VerticalAlignment.Center;
 
         var badges = new List<Control> { Ui.Pill(Proto(p), P.Text2, P.Fill, 10) };
-        LookupBadges(p);
-        var cdn = _cdn.GetValueOrDefault(p.Address ?? "");
-        var entry = _entry.GetValueOrDefault(p.Address ?? "");
-        if (cdn != null) badges.Add(Ui.Pill("CDN · " + cdn, P.Info, P.InfoSoft, 10));
-        else if (entry != null && exitCc != null && entry != exitCc) badges.Add(Ui.Pill($"{L.S("tunnel")} {NetBadges.Flag(entry)}→{NetBadges.Flag(exitCc)}", P.Accent, P.AccentSoft, 10));
         if (isActive) badges.Add(Ui.Pill(L.S("active"), P.Success, P.SuccessSoft, 10));
         if (!string.IsNullOrEmpty(p.TodayDown) && p.TodayDown != "0 B") badges.Add(Ui.Pill(Ui.Ltr($"↓{p.TodayDown} ↑{p.TodayUp}"), P.Text3, Colors.Transparent, 11));
 

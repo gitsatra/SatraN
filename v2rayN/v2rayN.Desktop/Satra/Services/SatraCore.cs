@@ -110,6 +110,8 @@ public class SatraCore : ReactiveObject
                 if (CoreManager.Instance.CoreRunning) { Toast?.Invoke(L.S("core_restarted")); return; }
             }
             Toast?.Invoke(L.S("core_failed"));
+            // kill switch: keep the system pointed at the (dead) tunnel/proxy so nothing leaks outside the VPN
+            if (SatraState.I.KillSwitch) { Set(ConnPhase.Failed); return; }
             await DisconnectAsync();
         }
         catch (Exception ex) { Logging.SaveLog("satra watch", ex); }
@@ -185,6 +187,12 @@ public class SatraCore : ReactiveObject
     }
 
     public void RaiseChanged() => Changed?.Invoke();
+
+    public async Task ReconnectAsync()
+    {
+        await DisconnectAsync();
+        await ConnectAsync();
+    }
 
     public async Task DisconnectAsync()
     {

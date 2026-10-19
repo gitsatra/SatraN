@@ -85,6 +85,17 @@ public static class L
         ["sc_latest"] = "latest",
         ["sc_core_old"] = "Xray {0}, latest is {1}",
         ["hotkey_hint"] = "Tip: Ctrl+Alt+S connects or disconnects from anywhere",
+        ["mode_vpn"] = "VPN (whole device)",
+        ["copied"] = "Copied",
+        ["smart_routing"] = "Smart routing (Iran)",
+        ["smart_routing_d"] = "Iranian sites go direct, everything else through the VPN",
+        ["exceptions"] = "Exceptions",
+        ["exceptions_d"] = "{0} always via VPN · {1} always direct",
+        ["always_vpn"] = "Always via VPN",
+        ["always_direct"] = "Always direct",
+        ["exceptions_hint"] = "One domain per line. Subdomains are included.",
+        ["kill_switch"] = "Kill switch",
+        ["kill_switch_d"] = "If the VPN drops unexpectedly, block internet instead of falling back to your real connection",
     };
 
     private static readonly Dictionary<string, string> Fa = new()
@@ -156,6 +167,17 @@ public static class L
         ["sc_latest"] = "آخرین نسخه",
         ["sc_core_old"] = "Xray {0}، آخرین نسخه {1}",
         ["hotkey_hint"] = "نکته: با Ctrl+Alt+S از هر جا وصل یا قطع کنید",
+        ["mode_vpn"] = "VPN (کل دستگاه)",
+        ["copied"] = "کپی شد",
+        ["smart_routing"] = "مسیریابی هوشمند (ایران)",
+        ["smart_routing_d"] = "سایت‌های ایرانی مستقیم، بقیه از طریق VPN",
+        ["exceptions"] = "استثناها",
+        ["exceptions_d"] = "{0} همیشه با VPN · {1} همیشه مستقیم",
+        ["always_vpn"] = "همیشه از طریق VPN",
+        ["always_direct"] = "همیشه مستقیم",
+        ["exceptions_hint"] = "هر خط یک دامنه. زیردامنه‌ها هم شامل می‌شوند.",
+        ["kill_switch"] = "کیل‌سوییچ",
+        ["kill_switch_d"] = "اگر VPN ناگهان قطع شد، اینترنت قطع شود تا آی‌پی واقعی لو نرود",
     };
 
     private static readonly Dictionary<string, string> Ru = new()
@@ -227,5 +249,16 @@ public static class L
         ["sc_latest"] = "последняя",
         ["sc_core_old"] = "Xray {0}, последняя {1}",
         ["hotkey_hint"] = "Совет: Ctrl+Alt+S подключает и отключает из любого места",
+        ["mode_vpn"] = "VPN (всё устройство)",
+        ["copied"] = "Скопировано",
+        ["smart_routing"] = "Умная маршрутизация (Иран)",
+        ["smart_routing_d"] = "Иранские сайты напрямую, остальное через VPN",
+        ["exceptions"] = "Исключения",
+        ["exceptions_d"] = "{0} всегда через VPN · {1} всегда напрямую",
+        ["always_vpn"] = "Всегда через VPN",
+        ["always_direct"] = "Всегда напрямую",
+        ["exceptions_hint"] = "Один домен в строке. Поддомены включены.",
+        ["kill_switch"] = "Kill switch",
+        ["kill_switch_d"] = "Если VPN неожиданно отключится, блокировать интернет вместо прямого соединения",
     };
 }

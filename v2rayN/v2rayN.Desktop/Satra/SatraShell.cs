@@ -209,5 +209,11 @@ public class SatraShell : Grid
         return await tcs.Task;
     }
 
+    public async Task Copy(string text)
+    {
+        await AvaUtils.SetClipboardData(Window, text);
+        Toast(L.S("copied"));
+    }
+
     public async Task<string?> ClipboardText() => await AvaUtils.GetClipboardData(Window);
 }

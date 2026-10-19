@@ -21,7 +21,7 @@ public class CheckResult
 /// </summary>
 public static class SecurityCheck
 {
-    public static readonly string[] Keys = ["sc_ip", "sc_dns", "sc_webrtc", "sc_ipv6", "sc_tls", "sc_kill", "sc_core"];
+    public static readonly string[] Keys = ["sc_ip", "sc_dns", "sc_webrtc", "sc_ipv6", "sc_tls", "sc_core"];
 
     private static HttpClient Client(bool proxy, int timeout = 12)
     {
@@ -137,13 +137,6 @@ public static class SecurityCheck
         }
         update();
 
-        // 6. kill switch
-        var ksR = R("sc_kill");
-        var cfg = AppManager.Instance.Config;
-        if (tun && cfg.TunModeItem.StrictRoute) { ksR.State = CheckState.Pass; ksR.Detail = L.S("sc_kill_on"); }
-        else { ksR.State = CheckState.Warn; ksR.Detail = L.S("sc_kill_partial"); }
-        update();
-
         // 7. core
         var coreR = R("sc_core");
         var cur = await CoreVersionAsync();
@@ -161,7 +154,7 @@ public static class SecurityCheck
         else { coreR.State = CheckState.Warn; coreR.Detail = L.F("sc_core_old", cur, latest); }
         update();
 
-        var w = new Dictionary<string, int> { ["sc_ip"] = 25, ["sc_dns"] = 20, ["sc_webrtc"] = 15, ["sc_ipv6"] = 10, ["sc_tls"] = 15, ["sc_kill"] = 10, ["sc_core"] = 5 };
+        var w = new Dictionary<string, int> { ["sc_ip"] = 25, ["sc_dns"] = 20, ["sc_webrtc"] = 15, ["sc_ipv6"] = 10, ["sc_tls"] = 20, ["sc_core"] = 10 };
         double score = res.Sum(r => w[r.Key] * (r.State switch { CheckState.Pass => 1.0, CheckState.Warn => 0.5, CheckState.Unknown => 0.6, _ => 0 }));
         return (int)Math.Round(score);
     }

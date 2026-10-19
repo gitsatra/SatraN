@@ -67,7 +67,11 @@ public class SatraState
     public bool Advanced { get; set; }
     public bool SmartConnect { get; set; } = true;
     /// <summary>proxy = system proxy, tun = whole computer, socks = proxy only (apps connect to the local port).</summary>
-    public string Mode { get; set; } = "proxy";
+    public string Mode { get; set; } = "tun";
+    public bool SmartRouting { get; set; } = true;
+    public bool KillSwitch { get; set; }
+    public List<string> ViaVpn { get; set; } = [];
+    public List<string> Direct { get; set; } = [];
     public string Routing { get; set; } = "iran";
     public bool AutoUpdate { get; set; } = true;
     public int Hardened { get; set; }

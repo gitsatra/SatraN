@@ -7,8 +7,10 @@ namespace v2rayN.Desktop.Satra.Pages;
 /// <summary>Home: one non-scrolling screen – connect orb, status, active server, live speed and totals.</summary>
 public class HomePage : IPage
 {
-    private readonly Grid _root = new() { Margin = new Thickness(36, 28, 36, 28), RowDefinitions = new RowDefinitions("Auto,*,Auto,Auto") };
-    private readonly ConnectOrb _orb = new() { Width = 260, Height = 260, HorizontalAlignment = HorizontalAlignment.Center };
+    private readonly Grid _root = new() { Margin = new Thickness(36, 28, 36, 28), RowDefinitions = new RowDefinitions("Auto,*,Auto,Auto,Auto") };
+    private readonly ContentControl _modeHost = new() { MaxWidth = 640, Margin = new Thickness(0, 0, 0, 14) };
+    private string _modeSig = "";
+    private readonly ConnectOrb _orb = new() { Width = 220, Height = 220, HorizontalAlignment = HorizontalAlignment.Center };
     private readonly TextBlock _status = Ui.T("", 26, FontWeight.Bold);
     private readonly TextBlock _hint = Ui.T("", 13.5, FontWeight.Normal, P.Text2);
     private readonly TextBlock _timer = Ui.T("", 13.5, FontWeight.Medium, P.Text2);
@@ -37,9 +39,11 @@ public class HomePage : IPage
         Grid.SetRow(center, 1);
         _root.Children.Add(center);
 
+        Grid.SetRow(_modeHost, 2);
+        _root.Children.Add(_modeHost);
         _server.Margin = new Thickness(0, 0, 0, 14);
         _server.MaxWidth = 640;
-        Grid.SetRow(_server, 2);
+        Grid.SetRow(_server, 3);
         _root.Children.Add(_server);
 
         var stats = new Grid { ColumnDefinitions = new ColumnDefinitions("*,*,*"), MaxWidth = 640 };
@@ -58,7 +62,7 @@ public class HomePage : IPage
         stats.Children.Add(c3);
         var statCard = Ui.Card(Ui.V(12, stats, _spark), new Thickness(20, 16));
         statCard.MaxWidth = 640;
-        Grid.SetRow(statCard, 3);
+        Grid.SetRow(statCard, 4);
         _root.Children.Add(statCard);
 
         SatraCore.I.Speed += (_, _) => Dispatcher.UIThread.Post(UpdateSpeed);
@@ -104,6 +108,9 @@ public class HomePage : IPage
         _modeChip.Padding = new Thickness(8, 2);
         _modeChip.HorizontalAlignment = HorizontalAlignment.Left;
 
+        var msig = $"{SatraState.I.Mode}{c.Phase == ConnPhase.On}";
+        if (msig != _modeSig) { _modeSig = msig; _modeHost.Content = ModeSelector(); }
+
         var a = c.Active;
         var key = $"{a?.IndexId}|{a?.Delay}|{(a != null ? NetBadges.ExitCc(a) : null)}|{SatraState.I.SmartConnect}";
         if (key != _lastServerKey)
@@ -112,6 +119,29 @@ public class HomePage : IPage
             _server.Content = ServerCard(a);
         }
         UpdateSpeed();
+    }
+
+    private static readonly string[] Modes = ["tun", "proxy", "socks"];
+
+    /// VPN (whole device) · System proxy · Proxy only. Changing it while connected reconnects automatically.
+    private Control ModeSelector()
+    {
+        var st = SatraState.I;
+        var seg = SettingsPage.Segmented([L.S("mode_vpn"), L.S("mode_proxy"), L.S("mode_proxy_only")], Math.Max(0, Array.IndexOf(Modes, st.Mode)), i =>
+        {
+            if (st.Mode == Modes[i]) return;
+            st.Mode = Modes[i];
+            SatraState.Save();
+            _modeSig = "";
+            Refresh();
+            if (SatraCore.I.Phase == ConnPhase.On) _ = SatraCore.I.ReconnectAsync();
+        });
+        if (st.Mode != "socks") return seg;
+        var port = AppManager.Instance.GetLocalPort(EInboundProtocol.socks);
+        var addr = $"{Global.Loopback}:{port}";
+        var chip = Ui.Btn(L.F("proxy_addr", addr, addr), Ui.Kind.Ghost, () => _ = SatraShell.I.Copy(addr), size: 12.5);
+        chip.HorizontalAlignment = HorizontalAlignment.Center;
+        return Ui.V(8, seg, chip);
     }
 
     private Control ServerCard(ProfileItemModel? a)
@@ -128,7 +158,20 @@ public class HomePage : IPage
         if (!string.IsNullOrEmpty(sub)) meta.Add(Ui.Caption(sub, P.Text3));
         if (SatraState.I.SmartConnect) meta.Add(Ui.Pill(L.S("smart"), P.Accent, P.AccentSoft, 10.5));
         var left = Ui.H(12, flag, Ui.V(3, Ui.T(Ui.CleanName(a.Remarks), 15.5, FontWeight.SemiBold), Ui.H(8, meta.ToArray())));
+        var ip = SatraState.I.Geo.TryGetValue(NetBadges.GeoKey(a), out var g) ? g.Ip : "";
+        if (SatraCore.I.Phase == ConnPhase.On && ip.Length > 0)
+            meta.Add(Ui.Btn(Ui.Ltr(ip) + "  ⧉", Ui.Kind.Ghost, () => _ = SatraShell.I.Copy(ip), size: 11));
+        var q = QuotaPill(a.Subid);
+        if (q != null) meta.Add(q);
         var right = Ui.H(10, ServersPage.PingPill(ServersPage.Delay(a)), Ui.Btn(L.S("servers"), Ui.Kind.Ghost, () => SatraShell.I.Go("servers"), size: 13));
         return Ui.Enter(Ui.Card(Ui.Row(left, right), new Thickness(18, 12)));
+    }
+
+    private static Control? QuotaPill(string? subId)
+    {
+        if (subId == null || !SatraState.I.Subs.TryGetValue(subId, out var m) || (m.Total <= 0 && m.Expire <= 0)) return null;
+        var (frac, data, time) = SubInfo.Describe(m);
+        var col = P.Level(frac);
+        return Ui.Pill(string.Join(" · ", new[] { data, time }.Where(x => !string.IsNullOrEmpty(x))), col, P.Lerp(P.Surface, col, 0.15), 10.5);
     }
 }

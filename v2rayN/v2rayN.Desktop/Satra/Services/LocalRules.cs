@@ -22,6 +22,11 @@ public static class LocalRules
             else continue;
             add.Add(r);
         }
+        var st = SatraState.I;
+        static List<string> D(IEnumerable<string> v) => v.Select(x => x.Contains(':') ? x : "domain:" + x).ToList();
+        if (st.ViaVpn.Count > 0) add.Add(new RulesItem { Id = Utils.GetGuid(false), OutboundTag = Global.ProxyTag, Enabled = true, Remarks = "satra:via", Domain = D(st.ViaVpn) });
+        if (st.Direct.Count > 0) add.Add(new RulesItem { Id = Utils.GetGuid(false), OutboundTag = Global.DirectTag, Enabled = true, Remarks = "satra:direct", Domain = D(st.Direct) });
+        if (!st.SmartRouting) add.Add(new RulesItem { Id = Utils.GetGuid(false), OutboundTag = Global.ProxyTag, Enabled = true, Remarks = "satra:all", Port = "0-65535" });
         rules.InsertRange(0, add);
         if (JsonSerializer.Serialize(rules) == before) return;
         routing.RuleSet = JsonUtils.Serialize(rules, false);
