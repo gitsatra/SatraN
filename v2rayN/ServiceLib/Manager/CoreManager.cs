@@ -314,7 +314,10 @@ public class CoreManager
 
         try
         {
-            if (mayNeedSudo
+            // SatraN .deb grants cap_net_admin to the bundled cores in postinst (marker "<core>.caps"),
+            // so the VPN (TUN) starts without asking for a password.
+            var hasCaps = Utils.IsLinux() && File.Exists(fileName + ".caps");
+            if (mayNeedSudo && !hasCaps
                 && ShouldRunAsSudo(isTunLaunch, coreInfo.CoreType, Utils.IsNonWindows()))
             {
                 _linuxSudo = true;

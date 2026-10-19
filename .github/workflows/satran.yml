@@ -12,6 +12,7 @@ permissions:
 
 env:
   XRAY_VERSION: v26.10.17
+  SINGBOX_VERSION: 1.14.3
   DOTNET_NOLOGO: true
 
 jobs:
@@ -44,6 +45,12 @@ jobs:
         run: |
           curl -fsSL -o xray.zip https://github.com/XTLS/Xray-core/releases/download/${XRAY_VERSION}/${{ matrix.xray }}.zip
           mkdir xray && unzip -q xray.zip -d xray
+          case "${{ matrix.rid }}" in
+            win-x64) sb=windows-amd64; ext=zip;; linux-x64) sb=linux-amd64; ext=tar.gz;; osx-x64) sb=darwin-amd64; ext=tar.gz;; osx-arm64) sb=darwin-arm64; ext=tar.gz;;
+          esac
+          curl -fsSL -o sb.$ext https://github.com/SagerNet/sing-box/releases/download/v${SINGBOX_VERSION}/sing-box-${SINGBOX_VERSION}-$sb.$ext
+          mkdir sb && if [ $ext = zip ]; then unzip -q sb.zip -d sb; else tar -xzf sb.tar.gz -C sb; fi
+          find sb -type f \( -name 'sing-box*' -o -name 'wintun.dll' \) -exec cp {} xray/ \;
       - name: Package
         run: python3 packaging/package.py ${{ matrix.rid }} pub xray ${{ steps.v.outputs.ver }} dist
       - uses: actions/upload-artifact@v4

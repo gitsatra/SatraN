@@ -19,6 +19,13 @@ def inject_core(dst):
     core = "xray.exe" if rid.startswith("win") else "xray"
     shutil.copy2(os.path.join(xray, core), os.path.join(b, "xray", core))
     os.chmod(os.path.join(b, "xray", core), 0o755)
+    sb = "sing-box.exe" if rid.startswith("win") else "sing-box"
+    if os.path.exists(os.path.join(xray, sb)):  # sing-box powers VPN (TUN) mode
+        os.makedirs(os.path.join(b, "sing_box"), exist_ok=True)
+        shutil.copy2(os.path.join(xray, sb), os.path.join(b, "sing_box", sb))
+        os.chmod(os.path.join(b, "sing_box", sb), 0o755)
+        if rid.startswith("win") and os.path.exists(os.path.join(xray, "wintun.dll")):
+            shutil.copy2(os.path.join(xray, "wintun.dll"), os.path.join(b, "sing_box", "wintun.dll"))
     for g in ("geoip.dat", "geosite.dat"):
         shutil.copy2(os.path.join(xray, g), os.path.join(b, g))
 
@@ -65,15 +72,36 @@ elif rid.startswith("linux"):
     os.chmod(os.path.join(root, "usr/bin/satran"), 0o755)
     os.makedirs(os.path.join(root, "usr/share/applications"))
     with open(os.path.join(root, "usr/share/applications/satran.desktop"), "w") as f:
-        f.write("[Desktop Entry]\nName=SatraN\nComment=Satra VPN client\nExec=/opt/satran/SatraN\nIcon=/opt/satran/satran.png\nTerminal=false\nType=Application\nCategories=Network;\n")
+        f.write("[Desktop Entry]\nName=SatraN\nComment=Satra VPN client\nExec=/opt/satran/SatraN\nIcon=satran\nStartupWMClass=SatraN\nTerminal=false\nType=Application\nCategories=Network;\n")
     icon = os.path.join(os.path.dirname(__file__), "satran.png")
     if os.path.exists(icon):
         shutil.copy2(icon, os.path.join(root, "opt/satran/satran.png"))
+    # icons: hicolor theme (all sizes) + pixmaps, so menus, dock and taskbar show the shield
+    icons = os.path.join(os.path.dirname(__file__), "icons")
+    for px in (16, 24, 32, 48, 64, 128, 256, 512):
+        d = os.path.join(root, f"usr/share/icons/hicolor/{px}x{px}/apps")
+        os.makedirs(d, exist_ok=True)
+        shutil.copy2(os.path.join(icons, f"satran-{px}.png"), os.path.join(d, "satran.png"))
+    os.makedirs(os.path.join(root, "usr/share/pixmaps"), exist_ok=True)
+    shutil.copy2(os.path.join(icons, "satran-256.png"), os.path.join(root, "usr/share/pixmaps/satran.png"))
     os.makedirs(os.path.join(root, "DEBIAN"))
+    with open(os.path.join(root, "DEBIAN/postinst"), "w") as f:
+        f.write("""#!/bin/sh
+set -e
+# VPN mode without password prompts: let the bundled cores create the TUN device and routes
+for c in /opt/satran/bin/sing_box/sing-box /opt/satran/bin/xray/xray; do
+  [ -x "$c" ] || continue
+  if command -v setcap >/dev/null 2>&1 && setcap cap_net_admin,cap_net_bind_service,cap_net_raw+ep "$c"; then touch "$c.caps"; else rm -f "$c.caps"; fi
+done
+command -v gtk-update-icon-cache >/dev/null 2>&1 && gtk-update-icon-cache -f -t /usr/share/icons/hicolor || true
+command -v update-desktop-database >/dev/null 2>&1 && update-desktop-database -q /usr/share/applications || true
+exit 0
+""")
+    os.chmod(os.path.join(root, "DEBIAN/postinst"), 0o755)
     size = sum(os.path.getsize(os.path.join(r, f)) for r, _, fs in os.walk(root) for f in fs) // 1024
     with open(os.path.join(root, "DEBIAN/control"), "w") as f:
         f.write(f"Package: satran\nVersion: {ver}\nArchitecture: amd64\nMaintainer: Satra <satra@localhost>\nInstalled-Size: {size}\n"
-                "Depends: libc6, libfontconfig1, libice6, libsm6, libx11-6, libxcursor1, libxext6, libxi6, libxrandr2\n"
+                "Depends: libc6, libcap2-bin, libfontconfig1, libice6, libsm6, libx11-6, libxcursor1, libxext6, libxi6, libxrandr2\n"
                 "Section: net\nPriority: optional\nHomepage: https://github.com/liamlope/satran\n"
                 "Description: SatraN - premium desktop client for Satra (v2rayN fork)\n Xray based client with Satra Hub support.\n")
     for r, ds, fs in os.walk(root):
