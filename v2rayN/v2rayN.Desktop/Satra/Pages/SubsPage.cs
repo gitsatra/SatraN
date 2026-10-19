@@ -223,10 +223,17 @@ public class SubsPage : IPage
             };
             if (await Try(oc, async () => { await oc.PutLimit(body); return true; })) { close(); await LimitsSheet(subId, deviceId, deviceName); }
         }, "+", 13);
-        var form = Ui.Card(Ui.V(10, Ui.Section(L.S("add_limit")), Ui.H(8, type, per, mb, Ui.T("MB", 13, FontWeight.Medium, P.Text2)), vals, add), new Thickness(14), P.Raised);
+        var form = Ui.Card(Ui.V(10, Ui.Section(L.S("add_limit")), Ui.H(8, type, per, mb, Mb()), vals, add), new Thickness(14), P.Raised);
         var title = L.S("server_limits") + (deviceName != null ? " · " + deviceName : "");
         close = SatraShell.I.Sheet(title, Ui.V(14, Ui.Group(rows.ToArray()), form), 620);
     }
 
     public static string PeriodText(string? p) => p switch { "weekly" => L.S("per_week"), "monthly" => L.S("per_month"), "total" => L.S("total"), _ => L.S("per_day") };
+
+    private static TextBlock Mb()
+    {
+        var t = Ui.T("MB", 13, FontWeight.Medium, P.Text2);
+        t.VerticalAlignment = Avalonia.Layout.VerticalAlignment.Center;
+        return t;
+    }
 }

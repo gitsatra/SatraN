@@ -133,6 +133,13 @@ public class UsagePage : IPage
             BuildLimits();
             close();
         });
-        close = SatraShell.I.Sheet(L.S("add_limit"), Ui.V(12, Ui.Section(L.S("what")), type, vals, Ui.H(8, mb, Ui.T("MB", 13, FontWeight.Medium, P.Text2), per), note, save), 480);
+        close = SatraShell.I.Sheet(L.S("add_limit"), Ui.V(12, Ui.Section(L.S("what")), type, vals, Ui.H(8, mb, Mb(), per), note, save), 480);
+    }
+
+    private static TextBlock Mb()
+    {
+        var t = Ui.T("MB", 13, FontWeight.Medium, P.Text2);
+        t.VerticalAlignment = Avalonia.Layout.VerticalAlignment.Center;
+        return t;
     }
 }

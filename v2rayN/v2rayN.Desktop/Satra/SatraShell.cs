@@ -23,6 +23,7 @@ public class SatraShell : Grid
     private readonly Dictionary<string, IPage> _pages = [];
     private readonly Dictionary<string, Border> _navItems = [];
     private string _current = "";
+    private readonly List<Action> _sheets = [];
     public Window Window { get; }
 
     public SatraShell(Window window)
@@ -101,6 +102,7 @@ public class SatraShell : Grid
 
     public void Go(string key)
     {
+        foreach (var close in _sheets.ToList()) close(); // never leave a sheet over another page
         foreach (var (k, b) in _navItems)
         {
             var on = k == key;
@@ -140,9 +142,10 @@ public class SatraShell : Grid
         var host = new Grid();
         void Close()
         {
+            _sheets.Remove(Close);
             host.Opacity = 0;
+            _overlay.IsHitTestVisible = _sheets.Count > 0;
             DispatcherTimer.RunOnce(() => _overlay.Children.Remove(host), TimeSpan.FromMilliseconds(250));
-            if (_overlay.Children.Count <= 1) _overlay.IsHitTestVisible = false;
         }
         var head = Ui.Row(Ui.T(title, 19, FontWeight.Bold), Ui.IconBtn("✕", Close, size: 13));
         panel.Child = new DockPanel { Children = { WithDock(head, Dock.Top), new ScrollViewer { Content = body, Margin = new Thickness(0, 12, 0, 0) } } };
@@ -151,6 +154,7 @@ public class SatraShell : Grid
         host.Children.Add(panel);
         _overlay.IsHitTestVisible = true;
         _overlay.Children.Add(Ui.Enter(host));
+        _sheets.Add(Close);
         return Close;
     }
 
