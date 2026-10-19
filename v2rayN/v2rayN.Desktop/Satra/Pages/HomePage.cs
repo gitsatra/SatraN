@@ -12,7 +12,7 @@ public class HomePage : IPage
     private readonly ContentControl _routeHost = new() { MaxWidth = 640, Margin = new Thickness(0, 0, 0, 14) };
     private string _modeSig = "";
     private string _routeSig = "";
-    private readonly ConnectOrb _orb = new() { Width = 200, Height = 200, HorizontalAlignment = HorizontalAlignment.Center };
+    private readonly ConnectOrb _orb = new() { Width = 168, Height = 168, HorizontalAlignment = HorizontalAlignment.Center };
     private readonly TextBlock _status = Ui.T("", 26, FontWeight.Bold);
     private readonly TextBlock _hint = Ui.T("", 13.5, FontWeight.Normal, P.Text2);
     private readonly TextBlock _timer = Ui.T("", 13.5, FontWeight.Medium, P.Text2);
@@ -144,13 +144,15 @@ public class HomePage : IPage
         });
         var hint = Ui.Caption(L.S("mode_hint"), P.Text3);
         hint.TextWrapping = TextWrapping.Wrap;
-        if (st.Mode != "socks") return Ui.V(8, seg, hint);
+        hint.MaxWidth = 620;
+        hint.Margin = new Thickness(2, 0, 2, 0);
+        if (st.Mode != "socks") return Ui.V(6, seg, hint);
         var port = AppManager.Instance.GetLocalPort(EInboundProtocol.socks);
-        var http = AppManager.Instance.GetLocalPort(EInboundProtocol.socks) + 1;
+        var http = port + 1; // mixed HTTP is LocalPort+1 (same as Android pairing)
         var addr = $"{Global.Loopback}:{port}";
         var chip = Ui.Btn(L.F("proxy_addr", addr, $"{Global.Loopback}:{http}"), Ui.Kind.Ghost, () => _ = SatraShell.I.Copy(addr), size: 12.5);
         chip.HorizontalAlignment = HorizontalAlignment.Center;
-        return Ui.V(8, seg, chip, hint);
+        return Ui.V(6, seg, chip, hint);
     }
 
     /// Prominent smart-routing toggle: local sites direct while VPN stays on; off = full tunnel.

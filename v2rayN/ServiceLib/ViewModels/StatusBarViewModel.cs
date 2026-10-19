@@ -485,16 +485,22 @@ public partial class StatusBarViewModel : MyReactiveObject
     {
         try
         {
-            var psi = new System.Diagnostics.ProcessStartInfo("getcap", [path])
+            var real = path;
+            try { var li = new FileInfo(path); if (li.LinkTarget != null) real = Path.GetFullPath(Path.Combine(Path.GetDirectoryName(path)!, li.LinkTarget)); } catch { }
+            foreach (var pth in new[] { real, path }.Distinct())
             {
-                UseShellExecute = false,
-                RedirectStandardOutput = true,
-                RedirectStandardError = true,
-            };
-            using var p = System.Diagnostics.Process.Start(psi)!;
-            var o = p.StandardOutput.ReadToEnd();
-            p.WaitForExit(2000);
-            return o.Contains("cap_net_admin", StringComparison.OrdinalIgnoreCase);
+                var psi = new System.Diagnostics.ProcessStartInfo("getcap", [pth])
+                {
+                    UseShellExecute = false,
+                    RedirectStandardOutput = true,
+                    RedirectStandardError = true,
+                };
+                using var p = System.Diagnostics.Process.Start(psi)!;
+                var o = p.StandardOutput.ReadToEnd();
+                p.WaitForExit(2000);
+                if (o.Contains("cap_net_admin", StringComparison.OrdinalIgnoreCase)) return true;
+            }
+            return false;
         }
         catch
         {

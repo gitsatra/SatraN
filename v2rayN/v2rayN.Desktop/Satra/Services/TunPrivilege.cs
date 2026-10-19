@@ -1,9 +1,9 @@
 namespace v2rayN.Desktop.Satra.Services;
 
 /// <summary>
-/// Linux VPN mode needs CAP_NET_ADMIN on the core that actually runs (usually under
-/// ~/.local/share/SatraN/bin/…). The .deb setcaps /opt/satran, but copies into the user
-/// data dir lose capabilities — so we verify with getcap and setcap the live binary once.
+/// Linux VPN needs CAP_NET_ADMIN. After .deb install the packaged cores under /opt/satran keep
+/// capabilities; CoreManager symlinks the user-data copies to those so VPN works like Outline —
+/// no password prompts on every connect.
 /// </summary>
 public static class TunPrivilege
 {
@@ -14,25 +14,21 @@ public static class TunPrivilege
     {
         var sb = SingBox;
         if (string.IsNullOrEmpty(sb) || !File.Exists(sb)) return false;
-        if (await HasNetAdminAsync(sb))
-        {
-            TouchMarker(sb);
-            return true;
-        }
+        if (await HasNetAdminAsync(sb)) return true;
+
+        // Last resort: one-time pkexec only if the packaged binary also lacks caps (tarball install)
         try
         {
             var targets = new List<string> { sb };
             var xr = Xray;
             if (!string.IsNullOrEmpty(xr) && File.Exists(xr) && !await HasNetAdminAsync(xr)) targets.Add(xr);
-            // Quote-safe: paths have no spaces in our layout; still escape single quotes
             static string Q(string p) => p.Replace("'", "'\\''");
             var cmds = string.Join("; ", targets.Select(t =>
                 $"setcap cap_net_admin,cap_net_bind_service,cap_net_raw+ep '{Q(t)}' && touch '{Q(t)}.caps'"));
             var psi = new System.Diagnostics.ProcessStartInfo("pkexec", ["/bin/sh", "-c", cmds]) { UseShellExecute = false };
             using var p = System.Diagnostics.Process.Start(psi)!;
             await p.WaitForExitAsync();
-            if (p.ExitCode != 0) return false;
-            return await HasNetAdminAsync(sb);
+            return p.ExitCode == 0 && await HasNetAdminAsync(sb);
         }
         catch (Exception ex)
         {
@@ -41,16 +37,14 @@ public static class TunPrivilege
         }
     }
 
-    private static void TouchMarker(string path)
-    {
-        try { File.WriteAllBytes(path + ".caps", []); } catch { }
-    }
-
     private static async Task<bool> HasNetAdminAsync(string path)
     {
         try
         {
-            var psi = new System.Diagnostics.ProcessStartInfo("getcap", [path])
+            // Resolve symlink so getcap sees the packaged binary with real capabilities
+            var real = path;
+            try { var li = new FileInfo(path); if (li.LinkTarget != null) real = Path.GetFullPath(Path.Combine(Path.GetDirectoryName(path)!, li.LinkTarget)); } catch { }
+            var psi = new System.Diagnostics.ProcessStartInfo("getcap", [real])
             {
                 UseShellExecute = false,
                 RedirectStandardOutput = true,
@@ -59,12 +53,26 @@ public static class TunPrivilege
             using var p = System.Diagnostics.Process.Start(psi)!;
             var o = await p.StandardOutput.ReadToEndAsync();
             await p.WaitForExitAsync();
-            return o.Contains("cap_net_admin", StringComparison.OrdinalIgnoreCase);
+            if (o.Contains("cap_net_admin", StringComparison.OrdinalIgnoreCase)) return true;
+            // Also try the path itself (kernel may report on the symlink)
+            if (!string.Equals(real, path, StringComparison.Ordinal))
+            {
+                psi = new System.Diagnostics.ProcessStartInfo("getcap", [path])
+                {
+                    UseShellExecute = false,
+                    RedirectStandardOutput = true,
+                    RedirectStandardError = true,
+                };
+                using var p2 = System.Diagnostics.Process.Start(psi)!;
+                o = await p2.StandardOutput.ReadToEndAsync();
+                await p2.WaitForExitAsync();
+                return o.Contains("cap_net_admin", StringComparison.OrdinalIgnoreCase);
+            }
+            return false;
         }
         catch
         {
-            // Fallback: trust a marker next to a binary that already has +x from the package
-            return File.Exists(path + ".caps") && File.Exists("/opt/satran/bin/sing_box/sing-box.caps");
+            return File.Exists(path + ".caps");
         }
     }
 }

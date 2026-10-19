@@ -226,17 +226,27 @@ public static class Ui
     /// <summary>Grouped-inset list row (Apple-style): title + subtitle on the left, accessory on the right.</summary>
     public static Border ListRow(string title, string? subtitle, Control? accessory, Action? onClick = null, string? glyph = null, Color? glyphColor = null)
     {
-        var left = new StackPanel { Spacing = 2 };
-        left.Children.Add(T(title, 14.5, FontWeight.Medium));
-        if (!string.IsNullOrEmpty(subtitle)) left.Children.Add(Caption(subtitle!));
+        var left = new StackPanel { Spacing = 2, Margin = new Thickness(0, 0, 12, 0) };
+        var titleTb = T(title, 14.5, FontWeight.Medium);
+        titleTb.TextWrapping = TextWrapping.NoWrap;
+        titleTb.TextTrimming = TextTrimming.CharacterEllipsis;
+        left.Children.Add(titleTb);
+        if (!string.IsNullOrEmpty(subtitle))
+        {
+            var sub = Caption(subtitle!);
+            sub.TextWrapping = TextWrapping.Wrap;
+            sub.MaxWidth = 420;
+            left.Children.Add(sub);
+        }
         Control content = left;
         if (glyph != null)
         {
-            var ic = new Border { Width = 30, Height = 30, CornerRadius = new CornerRadius(9), Background = P.B(glyphColor ?? P.Accent, 0.16), Child = Icons.Make(glyph, 16, glyphColor ?? P.Accent), VerticalAlignment = VerticalAlignment.Center };
-            ic.Child.HorizontalAlignment = HorizontalAlignment.Center;
+            var ic = new Border { Width = 30, Height = 30, CornerRadius = new CornerRadius(9), Background = P.B(glyphColor ?? P.Accent, 0.16), Child = Icons.Make(glyph, 16, glyphColor ?? P.Accent), VerticalAlignment = VerticalAlignment.Top, Margin = new Thickness(0, 2, 0, 0) };
+            ic.Child!.HorizontalAlignment = HorizontalAlignment.Center;
             ic.Child.VerticalAlignment = VerticalAlignment.Center;
             content = H(12, ic, left);
         }
+        if (accessory != null) accessory.VerticalAlignment = VerticalAlignment.Top;
         var row = new Border { Padding = new Thickness(14, 11), Background = Brushes.Transparent, Child = Row(content, accessory ?? (onClick != null ? T("›", 18, FontWeight.Normal, P.Text3) : null)) };
         if (onClick != null)
         {

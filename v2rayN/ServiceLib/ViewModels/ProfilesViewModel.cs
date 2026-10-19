@@ -271,12 +271,16 @@ public partial class ProfilesViewModel : MyReactiveObject
         ReloadRequested.Publish();
     }
 
+    /// <summary>Fired on the UI thread after each ping/speed result so Satra can refresh rows live.</summary>
+    public event Action? SpeedTestUpdated;
+
     public async Task SetSpeedTestResult(SpeedTestResult result)
     {
         if (result.IndexId.IsNullOrEmpty())
         {
             NoticeManager.Instance.SendMessageEx(result.Delay);
             NoticeManager.Instance.Enqueue(result.Delay);
+            SpeedTestUpdated?.Invoke();
             return;
         }
         var item = ProfileItems.FirstOrDefault(it => it.IndexId == result.IndexId);
@@ -298,6 +302,7 @@ public partial class ProfilesViewModel : MyReactiveObject
         {
             item.IpInfo = result.IpInfo ?? string.Empty;
         }
+        SpeedTestUpdated?.Invoke();
         await Task.CompletedTask;
     }
 

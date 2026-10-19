@@ -24,7 +24,7 @@ public class CoreManager
         _config = config;
         _updateFunc = updateFunc;
 
-        //Copy the bin folder to the storage location (for init)
+        // Copy the bin folder to the storage location (for init)
         if (Environment.GetEnvironmentVariable(Global.LocalAppData) == "1")
         {
             var fromPath = Utils.GetBaseDirectory("bin");
@@ -32,6 +32,13 @@ public class CoreManager
             if (fromPath != toPath)
             {
                 FileUtils.CopyDirectory(fromPath, toPath, true, false);
+                // Linux: copies drop CAP_NET_ADMIN. Prefer symlinks to the packaged cores (Outline-style:
+                // capabilities stay on the install path; VPN needs no password after .deb install).
+                if (Utils.IsLinux())
+                {
+                    PreferPackagedCore(fromPath, "sing_box", "sing-box");
+                    PreferPackagedCore(fromPath, "xray", "xray");
+                }
             }
         }
 
@@ -58,6 +65,33 @@ public class CoreManager
                     }
                 }
             }
+        }
+    }
+
+    /// <summary>Replace a user-data core copy with a symlink to the packaged binary that still has setcap.</summary>
+    private static void PreferPackagedCore(string packageBinRoot, string folder, string exeName)
+    {
+        try
+        {
+            var packaged = Path.Combine(packageBinRoot, folder, exeName);
+            if (!File.Exists(packaged)) return;
+            var localDir = Utils.GetBinPath("", folder);
+            Directory.CreateDirectory(localDir);
+            var local = Path.Combine(localDir, exeName);
+            if (File.Exists(local) || Directory.Exists(local) || File.Exists(local + ".caps"))
+            {
+                try { File.Delete(local); } catch { }
+                try { File.Delete(local + ".caps"); } catch { }
+            }
+            File.CreateSymbolicLink(local, packaged);
+            if (File.Exists(packaged + ".caps"))
+                File.Copy(packaged + ".caps", local + ".caps", true);
+            else
+                File.WriteAllBytes(local + ".caps", []);
+        }
+        catch (Exception ex)
+        {
+            Logging.SaveLog(_tag + " PreferPackagedCore", ex);
         }
     }
 
@@ -383,16 +417,22 @@ public class CoreManager
     {
         try
         {
-            var psi = new System.Diagnostics.ProcessStartInfo("getcap", [path])
+            var real = path;
+            try { var li = new FileInfo(path); if (li.LinkTarget != null) real = Path.GetFullPath(Path.Combine(Path.GetDirectoryName(path)!, li.LinkTarget)); } catch { }
+            foreach (var pth in new[] { real, path }.Distinct())
             {
-                UseShellExecute = false,
-                RedirectStandardOutput = true,
-                RedirectStandardError = true,
-            };
-            using var p = System.Diagnostics.Process.Start(psi)!;
-            var o = p.StandardOutput.ReadToEnd();
-            p.WaitForExit(2000);
-            return o.Contains("cap_net_admin", StringComparison.OrdinalIgnoreCase);
+                var psi = new System.Diagnostics.ProcessStartInfo("getcap", [pth])
+                {
+                    UseShellExecute = false,
+                    RedirectStandardOutput = true,
+                    RedirectStandardError = true,
+                };
+                using var p = System.Diagnostics.Process.Start(psi)!;
+                var o = p.StandardOutput.ReadToEnd();
+                p.WaitForExit(2000);
+                if (o.Contains("cap_net_admin", StringComparison.OrdinalIgnoreCase)) return true;
+            }
+            return false;
         }
         catch
         {
