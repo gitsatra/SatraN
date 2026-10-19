@@ -111,11 +111,12 @@ public class ServersPage : IPage
         if (_favOnly) view = view.Where(p => SatraState.I.Favorites.Contains(p.IndexId));
         var fav = SatraState.I.Favorites;
         view = _sortBest
-            ? view.OrderBy(p => p.Delay > 0 ? p.Delay : int.MaxValue)
+            ? view.OrderBy(p => Delay(p) > 0 ? Delay(p) : int.MaxValue)
             : view.OrderByDescending(p => fav.Contains(p.IndexId));
         var list = view.ToList();
         var active = AppManager.Instance.Config.IndexId;
         var sig = string.Join(",", list.Select(p => $"{p.IndexId}:{p.Delay}:{p.SpeedVal}:{p.IpInfo}:{fav.Contains(p.IndexId)}:{p.IndexId == active}:{_cdn.GetValueOrDefault(p.Address ?? "")}"));
+        FlushPings();
         if (!force && sig == _sig) return;
         _sig = sig;
         _list.Children.Clear();
@@ -162,7 +163,7 @@ public class ServersPage : IPage
 
         var right = new List<Control>();
         if (!string.IsNullOrEmpty(p.SpeedVal) && p.SpeedVal != "0") right.Add(Ui.Caption(p.SpeedVal + (decimal.TryParse(p.SpeedVal, out _) ? " MB/s" : ""), P.Text2));
-        right.Add(PingPill(p.Delay));
+        right.Add(PingPill(Delay(p)));
         right.Add(Ui.IconBtn("◎", () => _ = SatraCore.I.RunTestAsync(ESpeedActionType.Realping, [p]), L.S("ping"), P.Text2, 14));
         right.Add(Ui.IconBtn("↯", () => _ = SatraCore.I.RunTestAsync(ESpeedActionType.Speedtest, [p]), L.S("speed"), P.Text2, 14));
 
@@ -209,4 +210,22 @@ public class ServersPage : IPage
             });
         });
     }
+
+    public static string Key(ProfileItemModel p) => $"{p.ConfigType}:{p.Address}:{p.Port}:{Ui.CleanName(p.Remarks)}";
+
+    /// Live delay when known, otherwise the last measured one from a previous session.
+    public static int Delay(ProfileItemModel p)
+    {
+        var k = Key(p);
+        if (p.Delay > 0)
+        {
+            if (!SatraState.I.Pings.TryGetValue(k, out var old) || old != p.Delay) { SatraState.I.Pings[k] = p.Delay; _pingDirty = true; }
+            return p.Delay;
+        }
+        if (p.Delay < 0) return p.Delay;
+        return SatraState.I.Pings.TryGetValue(k, out var v) ? v : 0;
+    }
+
+    private static bool _pingDirty;
+    public static void FlushPings() { if (_pingDirty) { _pingDirty = false; SatraState.Save(); } }
 }

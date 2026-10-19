@@ -71,6 +71,8 @@ public class SatraState
     public string Routing { get; set; } = "iran";
     public bool AutoUpdate { get; set; } = true;
     public List<string> Favorites { get; set; } = [];
+    /// Last good latency per server, keyed by address:port:id so it survives subscription refreshes.
+    public Dictionary<string, int> Pings { get; set; } = [];
     public Dictionary<string, HubReg> Hub { get; set; } = [];
     public Dictionary<string, SubMeta> Subs { get; set; } = [];
     public Dictionary<string, ExitGeo> Geo { get; set; } = [];
