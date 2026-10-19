@@ -92,7 +92,7 @@ public static class ExitProbe
                 catch (Exception ex) { Logging.SaveLog("satra exit probe", ex); }
                 finally { if (proc != null) await proc.StopAsync(); }
             }
-            SatraState.Save();
+            Dispatcher.UIThread.Post(SatraState.Save);
         }
         finally
         {

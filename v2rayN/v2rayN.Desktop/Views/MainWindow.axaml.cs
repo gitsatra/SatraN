@@ -28,6 +28,7 @@ public partial class MainWindow : WindowBase<MainWindowViewModel>
             {
                 SatraState.Load();
                 Identity.Apply();
+                _ = Hardening.ApplyAsync();
                 _ = new SatraCore(ViewModel);
                 host.Content = new SatraShell(this);
             }
@@ -121,6 +122,10 @@ public partial class MainWindow : WindowBase<MainWindowViewModel>
         {
             case EGlobalHotkey.ShowForm:
                 Dispatcher.UIThread.Post(() => ShowHideWindow(null));
+                break;
+
+            case EGlobalHotkey.SatraToggle:
+                Dispatcher.UIThread.Post(() => _ = SatraCore.I.ToggleAsync());
                 break;
 
             case EGlobalHotkey.SystemProxyClear:

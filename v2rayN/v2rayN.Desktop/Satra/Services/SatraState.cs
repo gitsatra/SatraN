@@ -70,6 +70,7 @@ public class SatraState
     public string Mode { get; set; } = "proxy";
     public string Routing { get; set; } = "iran";
     public bool AutoUpdate { get; set; } = true;
+    public int Hardened { get; set; }
     public List<string> Favorites { get; set; } = [];
     /// Last good latency per server, keyed by address:port:id so it survives subscription refreshes.
     public Dictionary<string, int> Pings { get; set; } = [];
@@ -90,7 +91,7 @@ public class SatraState
         {
             if (File.Exists(PathOf))
             {
-                I = JsonSerializer.Deserialize<SatraState>(File.ReadAllText(PathOf)) ?? new SatraState();
+                I = JsonSerializer.Deserialize<SatraState>(SecureStore.Decrypt(File.ReadAllBytes(PathOf))) ?? new SatraState();
             }
         }
         catch (Exception ex)
@@ -104,11 +105,13 @@ public class SatraState
     public static void Save()
     {
         lock (Gate)
+        lock (I.Geo)
         {
             try
             {
                 var tmp = PathOf + ".tmp";
-                File.WriteAllText(tmp, JsonSerializer.Serialize(I, Opt));
+                File.WriteAllBytes(tmp, SecureStore.Encrypt(JsonSerializer.Serialize(I, Opt)));
+                SecureStore.Restrict(tmp);
                 File.Move(tmp, PathOf, true);
             }
             catch (Exception ex)

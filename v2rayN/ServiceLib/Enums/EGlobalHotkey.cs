@@ -7,4 +7,5 @@ public enum EGlobalHotkey
     SystemProxySet = 2,
     SystemProxyUnchanged = 3,
     SystemProxyPac = 4,
+    SatraToggle = 5,
 }
