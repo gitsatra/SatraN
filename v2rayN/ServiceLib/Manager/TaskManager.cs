@@ -130,6 +130,8 @@ public class TaskManager
 
     private async Task UpdateTaskRunCheckUpdate()
     {
+        // SatraN ships its own pinned core; upstream v2rayN/mihomo/sing-box update nags don't apply.
+        if (_config.GuiItem != null) return;
         Logging.SaveLog("Execute check update");
 
         var updateService = new UpdateService(_config, async (success, msg) => await Task.CompletedTask);
