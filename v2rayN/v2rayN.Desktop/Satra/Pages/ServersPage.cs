@@ -65,11 +65,11 @@ public class ServersPage : IPage
 
     public static Border PingPill(int delay) => delay switch
     {
-        > 0 and < 300 => Ui.Pill($"{delay} ms", P.Success, P.SuccessSoft),
-        > 0 and < 800 => Ui.Pill($"{delay} ms", P.Warning, P.WarningSoft),
-        > 0 => Ui.Pill($"{delay} ms", P.Danger, P.DangerSoft),
+        > 0 and < 300 => Ui.Pill(Ui.Ltr($"{delay} ms"), P.Success, P.SuccessSoft),
+        > 0 and < 800 => Ui.Pill(Ui.Ltr($"{delay} ms"), P.Warning, P.WarningSoft),
+        > 0 => Ui.Pill(Ui.Ltr($"{delay} ms"), P.Danger, P.DangerSoft),
         < 0 => Ui.Pill("timeout", P.Danger, P.DangerSoft),
-        _ => Ui.Pill("— ms", P.Text3, P.Fill),
+        _ => Ui.Pill(Ui.Ltr("— ms"), P.Text3, P.Fill),
     };
 
     public void Refresh()
@@ -154,7 +154,7 @@ public class ServersPage : IPage
         if (cdn != null) badges.Add(Ui.Pill("CDN · " + cdn, P.Info, P.InfoSoft, 10));
         else if (entry != null && exitCc != null && entry != exitCc) badges.Add(Ui.Pill($"{L.S("tunnel")} {NetBadges.Flag(entry)}→{NetBadges.Flag(exitCc)}", P.Accent, P.AccentSoft, 10));
         if (isActive) badges.Add(Ui.Pill(L.S("active"), P.Success, P.SuccessSoft, 10));
-        if (!string.IsNullOrEmpty(p.TodayDown) && p.TodayDown != "0 B") badges.Add(Ui.Caption($"↓{p.TodayDown} ↑{p.TodayUp}", P.Text3));
+        if (!string.IsNullOrEmpty(p.TodayDown) && p.TodayDown != "0 B") badges.Add(Ui.Pill(Ui.Ltr($"↓{p.TodayDown} ↑{p.TodayUp}"), P.Text3, Colors.Transparent, 11));
 
         var name = Ui.T(p.Remarks ?? p.Address ?? "", 14.5, FontWeight.SemiBold);
         name.TextTrimming = TextTrimming.CharacterEllipsis;

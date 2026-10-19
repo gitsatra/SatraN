@@ -68,6 +68,8 @@ public class ConnectOrb : Control
 
     public override void Render(DrawingContext ctx)
     {
+        // custom drawing (incl. text) must not be mirrored in RTL layouts
+        using var _ = FlowDirection == FlowDirection.RightToLeft ? ctx.PushTransform(new Matrix(-1, 0, 0, 1, Bounds.Width, 0)) : default(DrawingContext.PushedState?);
         var t = (DateTime.Now - _t0).TotalSeconds;
         var since = (DateTime.Now - _phaseAt).TotalSeconds;
         var c = new Point(Bounds.Width / 2, Bounds.Height / 2);
@@ -122,7 +124,7 @@ public class ConnectOrb : Control
             var gcol = _fill > 0.5 ? Colors.White : P.Lerp(Color.Parse("#B4B4BD"), Colors.White, _fill * 2);
             var gp = new Pen(P.B(gcol), 7, lineCap: PenLineCap.Round);
             var gr = r * 0.34;
-            DrawArc(ctx, c, gr, -60, 300, gp);
+            DrawArc(ctx, c, gr, 32, 296, gp);
             ctx.DrawLine(gp, new Point(c.X, c.Y - gr - 6), new Point(c.X, c.Y - gr * 0.25));
         }
     }

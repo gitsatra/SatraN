@@ -44,6 +44,8 @@ public class BarChart : Control
 
     public override void Render(DrawingContext ctx)
     {
+        // custom drawing (incl. text) must not be mirrored in RTL layouts
+        using var _ = FlowDirection == FlowDirection.RightToLeft ? ctx.PushTransform(new Matrix(-1, 0, 0, 1, Bounds.Width, 0)) : default(DrawingContext.PushedState?);
         var n = _shown.Length;
         if (n == 0) return;
         var w = Bounds.Width;
@@ -61,12 +63,12 @@ public class BarChart : Control
             ctx.DrawRectangle(P.B(col), null, new RoundedRect(new Rect(x, h - bh, bw, bh), bw / 2.6));
             if (i % lblEvery == 0 || i == n - 1)
             {
-                var ft = new FormattedText(_labels.ElementAtOrDefault(i) ?? "", CultureInfo.CurrentCulture, FlowDirection.LeftToRight, Typeface.Default, 10.5, P.B(isHi ? P.Text : P.Text3));
+                var ft = new FormattedText(_labels.ElementAtOrDefault(i) ?? "", CultureInfo.CurrentCulture, FlowDirection.LeftToRight, new Typeface(GetValue(Avalonia.Controls.Documents.TextElement.FontFamilyProperty)), 10.5, P.B(isHi ? P.Text : P.Text3));
                 ctx.DrawText(ft, new Point(x + bw / 2 - ft.Width / 2, h + 5));
             }
             if (isHi && _values.Length > i)
             {
-                var ft = new FormattedText(Format(_values[i]), CultureInfo.CurrentCulture, FlowDirection.LeftToRight, Typeface.Default, 11, P.B(P.Text));
+                var ft = new FormattedText(Format(_values[i]), CultureInfo.CurrentCulture, FlowDirection.LeftToRight, new Typeface(GetValue(Avalonia.Controls.Documents.TextElement.FontFamilyProperty)), 11, P.B(P.Text));
                 ctx.DrawText(ft, new Point(Math.Clamp(x + bw / 2 - ft.Width / 2, 0, w - ft.Width), Math.Max(0, h - bh - 16)));
             }
         }
@@ -87,7 +89,13 @@ public class Sparkline : Control
 
     public override void Render(DrawingContext ctx)
     {
-        if (_data.Length < 2) return;
+        // custom drawing (incl. text) must not be mirrored in RTL layouts
+        using var _ = FlowDirection == FlowDirection.RightToLeft ? ctx.PushTransform(new Matrix(-1, 0, 0, 1, Bounds.Width, 0)) : default(DrawingContext.PushedState?);
+        if (_data.Length < 2 || _data.Max() <= 0)
+        {
+            ctx.DrawLine(new Pen(P.B(LineColor, 0.35), 1.5, new DashStyle([3, 4], 0)), new Point(0, Bounds.Height - 1), new Point(Bounds.Width, Bounds.Height - 1));
+            return;
+        }
         var w = Bounds.Width;
         var h = Bounds.Height;
         var max = Math.Max(1024, _data.Max()) * 1.15;

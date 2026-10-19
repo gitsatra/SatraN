@@ -70,7 +70,7 @@ public class SatraShell : Grid
         AddNav("servers", "≡", new ServersPage());
         AddNav("subs", "▣", new SubsPage());
         AddNav("usage", "▥", new UsagePage());
-        AddNav("settings", "⚙", new SettingsPage());
+        AddNav("settings", "⚙\uFE0E", new SettingsPage());
         Go("home");
 
         SatraCore.I.Changed += () => Dispatcher.UIThread.Post(OnCoreChanged);

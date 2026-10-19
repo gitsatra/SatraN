@@ -95,6 +95,9 @@ public static class ConfigHandler
             EnableLegacyProtect = true,
         };
         config.GuiItem ??= new();
+        // SatraN: usage screens and limits need live statistics
+        config.GuiItem.EnableStatistics = true;
+        config.GuiItem.DisplayRealTimeSpeed = true;
         if (!Global.RootCertProviders.Contains(config.GuiItem.RootCertProvider))
         {
             config.GuiItem.RootCertProvider = Global.RootCertProviders.First();

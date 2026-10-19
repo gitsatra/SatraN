@@ -9,6 +9,7 @@ public class SettingsPage : IPage
     private readonly Grid _root = new() { Margin = new Thickness(36, 28, 36, 0), RowDefinitions = new RowDefinitions("Auto,*") };
     private readonly StackPanel _body = new() { Spacing = 10, Margin = new Thickness(0, 18, 0, 28), MaxWidth = 760, HorizontalAlignment = HorizontalAlignment.Left };
     public Control View => _root;
+    private bool _modeChanged;
     private static Config Cfg => AppManager.Instance.Config;
 
     public SettingsPage()
@@ -39,9 +40,16 @@ public class SettingsPage : IPage
         return host;
     }
 
-    public void Refresh()
+    private string _sig = "";
+
+    public void Refresh() => Build(false);
+
+    private void Build(bool force)
     {
         var st = SatraState.I;
+        var sig = $"{SatraCore.I.Phase == ConnPhase.On}{st.Mode}{st.Routing}{st.Advanced}{L.Lang}{_modeChanged}{st.SmartConnect}{st.AutoUpdate}";
+        if (!force && sig == _sig) return;
+        _sig = sig;
         _body.Children.Clear();
         var connected = SatraCore.I.Phase == ConnPhase.On;
 
@@ -55,6 +63,7 @@ public class SettingsPage : IPage
             {
                 if (st.Mode == modes[i]) return;
                 st.Mode = modes[i];
+                _modeChanged = true;
                 SatraState.Save();
                 if (SatraCore.I.Phase == ConnPhase.On) SatraCore.I.Notify(L.S("reconnect_note"));
                 Refresh();
@@ -63,8 +72,8 @@ public class SettingsPage : IPage
         if (st.Mode == "socks")
             modeKids.Add(new Border { Background = P.B(P.InfoSoft), CornerRadius = Ui.RCtl, Padding = new Thickness(12, 8), Child = Ui.T(L.F("proxy_addr", $"{Global.Loopback}:{port}", $"{Global.Loopback}:{port}"), 13, FontWeight.Medium, P.Info, TextWrapping.Wrap) });
         if (st.Mode == "tun" && !Utils.IsWindows())
-            modeKids.Add(Ui.Caption("TUN needs administrator rights (you may be asked for your password).", P.Text3));
-        if (connected) modeKids.Add(Ui.Caption(L.S("reconnect_note"), P.Warning));
+            modeKids.Add(Ui.Caption(L.S("tun_admin"), P.Text3));
+        if (connected && _modeChanged) modeKids.Add(Ui.Caption(L.S("reconnect_note"), P.Warning));
         _body.Children.Add(Ui.Section(L.S("mode")));
         _body.Children.Add(Ui.Card(Ui.V(10, modeKids.ToArray()), new Thickness(14)));
 

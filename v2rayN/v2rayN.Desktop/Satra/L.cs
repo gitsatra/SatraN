@@ -42,7 +42,7 @@ public static class L
         ["pick_pin"] = "Enter the owner PIN", ["set_pin"] = "Set an owner PIN (4+ characters)", ["wrong_pin"] = "Wrong PIN",
         ["online"] = "online", ["last_seen"] = "seen {0}", ["this_device"] = "This computer",
         ["limit_reached"] = "{0} reached its limit", ["added"] = "Added", ["nothing_clip"] = "Clipboard is empty",
-        ["simple_mode_hint"] = "Simple mode keeps only what most people need.",
+        ["simple_mode_hint"] = "Simple mode keeps only what most people need.", ["no_limits"] = "No limits yet. Cap all traffic per day, or block a site or program when its budget runs out.", ["tun_admin"] = "TUN needs administrator rights (you may be asked for your password).", ["limit_all_note"] = "Counts all traffic through SatraN and disconnects when it is used up.", ["limit_site_note"] = "Sites and programs are blocked once the budget is used up; 0 MB blocks them right away. Exact per-site quotas are enforced by the server through Satra Hub.",
     };
 
     private static readonly Dictionary<string, string> Fa = new()
@@ -71,7 +71,7 @@ public static class L
         ["pick_pin"] = "رمز مالک را وارد کنید", ["set_pin"] = "یک رمز مالک بگذارید (حداقل ۴ کاراکتر)", ["wrong_pin"] = "رمز اشتباه است",
         ["online"] = "آنلاین", ["last_seen"] = "آخرین بار {0}", ["this_device"] = "این کامپیوتر",
         ["limit_reached"] = "{0} به محدودیت رسید", ["added"] = "اضافه شد", ["nothing_clip"] = "کلیپ‌بورد خالی است",
-        ["simple_mode_hint"] = "حالت ساده فقط چیزهایی را نشان می‌دهد که بیشتر افراد لازم دارند.",
+        ["simple_mode_hint"] = "حالت ساده فقط چیزهایی را نشان می‌دهد که بیشتر افراد لازم دارند.", ["no_limits"] = "هنوز محدودیتی نیست. مصرف کل روزانه را محدود کنید، یا وقتی سهمیهٔ یک سایت یا برنامه تمام شد آن را ببندید.", ["tun_admin"] = "حالت TUN به دسترسی مدیر نیاز دارد (ممکن است رمز عبور خواسته شود).", ["limit_all_note"] = "همهٔ ترافیک عبوری از SatraN شمرده می‌شود و پس از اتمام، اتصال قطع می‌شود.", ["limit_site_note"] = "پس از اتمام سهمیه، سایت یا برنامه مسدود می‌شود؛ ۰ مگابایت یعنی همین حالا مسدود شود. سهمیهٔ دقیق هر سایت را سرور از طریق Satra Hub اعمال می‌کند.",
     };
 
     private static readonly Dictionary<string, string> Ru = new()
@@ -100,6 +100,6 @@ public static class L
         ["pick_pin"] = "Введите PIN владельца", ["set_pin"] = "Задайте PIN владельца (от 4 символов)", ["wrong_pin"] = "Неверный PIN",
         ["online"] = "онлайн", ["last_seen"] = "был {0}", ["this_device"] = "Этот компьютер",
         ["limit_reached"] = "{0}: лимит исчерпан", ["added"] = "Добавлено", ["nothing_clip"] = "Буфер обмена пуст",
-        ["simple_mode_hint"] = "Простой режим показывает только самое нужное.",
+        ["simple_mode_hint"] = "Простой режим показывает только самое нужное.", ["no_limits"] = "Лимитов пока нет. Ограничьте весь трафик в день или блокируйте сайт/программу, когда их лимит исчерпан.", ["tun_admin"] = "Для TUN нужны права администратора (может потребоваться пароль).", ["limit_all_note"] = "Считается весь трафик через SatraN; при исчерпании соединение отключается.", ["limit_site_note"] = "Сайты и программы блокируются после исчерпания лимита; 0 МБ — блокировать сразу. Точные лимиты по сайтам применяет сервер через Satra Hub.",
     };
 }

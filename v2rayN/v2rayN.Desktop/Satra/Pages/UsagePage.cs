@@ -11,7 +11,7 @@ public class UsagePage : IPage
     private readonly StackPanel _body = new() { Spacing = 14, Margin = new Thickness(0, 18, 0, 28) };
     private readonly BarChart _data = new() { BarColor = P.Accent, Format = Ui.Bytes };
     private readonly BarChart _hours = new() { BarColor = P.Info, Height = 120, Format = v => $"{v:0.#} h" };
-    private readonly TextBlock _sumDown = Ui.T("", 22, FontWeight.Bold), _sumUp = Ui.T("", 22, FontWeight.Bold), _sumHours = Ui.T("", 22, FontWeight.Bold);
+    private readonly TextBlock _sumDown = Ui.Num(Ui.T("", 22, FontWeight.Bold)), _sumUp = Ui.Num(Ui.T("", 22, FontWeight.Bold)), _sumHours = Ui.Num(Ui.T("", 22, FontWeight.Bold));
     private readonly StackPanel _limits = new() { Spacing = 0 };
     private int _days = 7;
     private readonly Border _seg7, _seg30;
@@ -74,7 +74,7 @@ public class UsagePage : IPage
         _limits.Children.Clear();
         if (SatraState.I.Limits.Count == 0)
         {
-            _limits.Children.Add(new Border { Padding = new Thickness(16, 14), Child = Ui.Caption(L.S("simple_mode_hint") + " " + L.S("add_limit") + " +", P.Text3) });
+            _limits.Children.Add(new Border { Padding = new Thickness(16, 14), Child = Ui.Caption(L.S("no_limits"), P.Text3) });
             return;
         }
         var first = true;
@@ -111,8 +111,8 @@ public class UsagePage : IPage
         {
             vals.IsVisible = type.SelectedIndex != 0;
             note.Text = type.SelectedIndex == 0
-                ? "Counts all traffic through SatraN; disconnects when used up."
-                : "Sites/programs are blocked when the limit is used up; 0 MB blocks them now. Exact per-site quotas are enforced server-side via Satra Hub.";
+                ? L.S("limit_all_note")
+                : L.S("limit_site_note");
         }
         type.SelectionChanged += (_, _) => UpdNote();
         UpdNote();
@@ -133,6 +133,6 @@ public class UsagePage : IPage
             BuildLimits();
             close();
         });
-        close = SatraShell.I.Sheet(L.S("add_limit"), Ui.V(12, Ui.Section(L.S("what")), type, vals, Ui.H(8, mb, per), note, save), 480);
+        close = SatraShell.I.Sheet(L.S("add_limit"), Ui.V(12, Ui.Section(L.S("what")), type, vals, Ui.H(8, mb, Ui.T("MB", 13, FontWeight.Medium, P.Text2), per), note, save), 480);
     }
 }

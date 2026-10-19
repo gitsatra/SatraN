@@ -13,9 +13,9 @@ public class HomePage : IPage
     private readonly TextBlock _hint = Ui.T("", 13.5, FontWeight.Normal, P.Text2);
     private readonly TextBlock _timer = Ui.T("", 13.5, FontWeight.Medium, P.Text2);
     private readonly ContentControl _server = new();
-    private readonly TextBlock _down = Ui.T("0 B/s", 22, FontWeight.Bold), _up = Ui.T("0 B/s", 22, FontWeight.Bold);
+    private readonly TextBlock _down = Ui.Num(Ui.T("0 B/s", 22, FontWeight.Bold)), _up = Ui.Num(Ui.T("0 B/s", 22, FontWeight.Bold));
     private readonly TextBlock _downTot = Ui.Caption(""), _upTot = Ui.Caption("");
-    private readonly TextBlock _today = Ui.T("", 15, FontWeight.SemiBold);
+    private readonly TextBlock _today = Ui.Num(Ui.T("", 15, FontWeight.SemiBold));
     private readonly Sparkline _spark = new() { Height = 54 };
     private readonly Border _modeChip = new();
     private string _lastServerKey = "";
@@ -62,6 +62,7 @@ public class HomePage : IPage
         _root.Children.Add(statCard);
 
         SatraCore.I.Speed += (_, _) => Dispatcher.UIThread.Post(UpdateSpeed);
+        SatraCore.I.Ticked += () => Dispatcher.UIThread.Post(() => { var c = SatraCore.I; _timer.Text = c.Since is { } s ? (DateTime.Now - s).ToString(@"hh\:mm\:ss") : ""; });
     }
 
     private async Task AddAsync() => await SatraCore.I.AddFromClipboardAsync(await SatraShell.I.ClipboardText());
@@ -74,7 +75,7 @@ public class HomePage : IPage
         _downTot.Text = $"{L.S("session")} {Ui.Bytes(c.SessionDown)}";
         _upTot.Text = $"{L.S("session")} {Ui.Bytes(c.SessionUp)}";
         var d = SatraState.I.Today();
-        _today.Text = $"↓ {Ui.Bytes(d.Down)}  ↑ {Ui.Bytes(d.Up)}";
+        _today.Text = Ui.Ltr($"↓ {Ui.Bytes(d.Down)}  ↑ {Ui.Bytes(d.Up)}");
         _spark.LineColor = c.Phase == ConnPhase.On ? P.Success : P.Accent;
         _spark.SetData(c.History);
     }
@@ -97,14 +98,14 @@ public class HomePage : IPage
 
         var cfg = AppManager.Instance.Config;
         var mode = cfg.TunModeItem.EnableTun ? L.S("mode_tun") : cfg.SystemProxyItem.SysProxyType == ESysProxyType.ForcedChange || c.Phase != ConnPhase.On ? L.S("mode_proxy") : L.S("mode_proxy_only");
-        _modeChip.Child = Ui.Pill(mode, P.Text2, P.Fill, 10.5).Child;
+        _modeChip.Child = Ui.T(mode, 10.5, FontWeight.SemiBold, P.Text2);
         _modeChip.Background = P.B(P.Fill);
         _modeChip.CornerRadius = Ui.RPill;
         _modeChip.Padding = new Thickness(8, 2);
         _modeChip.HorizontalAlignment = HorizontalAlignment.Left;
 
         var a = c.Active;
-        var key = $"{a?.IndexId}|{a?.Delay}|{a != null && NetBadges.ExitCc(a) is { } cc2}|{c.Phase}";
+        var key = $"{a?.IndexId}|{a?.Delay}|{(a != null ? NetBadges.ExitCc(a) : null)}|{SatraState.I.SmartConnect}";
         if (key != _lastServerKey)
         {
             _lastServerKey = key;

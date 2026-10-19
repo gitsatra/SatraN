@@ -15,6 +15,8 @@ public class SatraCore : ReactiveObject
     private Config Cfg => AppManager.Instance.Config;
 
     public event Action? Changed;
+    /// <summary>Once per second (session timer etc.); cheap UI updates only.</summary>
+    public event Action? Ticked;
     public event Action<double, double>? Speed; // up, down bytes/s
     public event Action<string>? Toast;
 
@@ -51,28 +53,40 @@ public class SatraCore : ReactiveObject
 
     private void OnStats(ServerSpeedItem s)
     {
-        UpRate = s.ProxyUp;
-        DownRate = s.ProxyDown;
+        // the stats services report KiB per tick (1 s)
+        var up = s.ProxyUp * 1024;
+        var down = s.ProxyDown * 1024;
+        UpRate = up;
+        DownRate = down;
+        _lastStat = DateTime.Now;
         if (Phase == ConnPhase.On)
         {
-            SessionUp += s.ProxyUp;
-            SessionDown += s.ProxyDown;
+            SessionUp += up;
+            SessionDown += down;
             var d = SatraState.I.Today();
-            d.Up += s.ProxyUp;
-            d.Down += s.ProxyDown;
-            AccountLocal(s.ProxyUp + s.ProxyDown);
+            d.Up += up;
+            d.Down += down;
+            AccountLocal(up + down);
         }
-        History.Enqueue(s.ProxyUp + s.ProxyDown);
+        History.Enqueue(up + down);
         while (History.Count > 60) History.Dequeue();
-        Speed?.Invoke(s.ProxyUp, s.ProxyDown);
+        Speed?.Invoke(up, down);
     }
 
+    private DateTime _lastStat;
     private int _ticks;
     private void Tick()
     {
+        if ((DateTime.Now - _lastStat).TotalSeconds > 2.5 && (UpRate > 0 || DownRate > 0))
+        {
+            UpRate = DownRate = 0;
+            History.Enqueue(0);
+            while (History.Count > 60) History.Dequeue();
+            Speed?.Invoke(0, 0);
+        }
         if (Phase == ConnPhase.On) SatraState.I.Today().Seconds++;
         if (++_ticks % 30 == 0) SatraState.Save();
-        Changed?.Invoke();
+        Ticked?.Invoke();
     }
 
     public async Task ToggleAsync()

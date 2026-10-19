@@ -49,7 +49,27 @@ public static class Ui
     public static readonly CornerRadius RPill = new(999);
 
     public static TextBlock T(string text, double size = 14, FontWeight weight = FontWeight.Normal, Color? color = null, TextWrapping wrap = TextWrapping.NoWrap) =>
-        new() { Text = text, FontSize = size, FontWeight = weight, Foreground = P.B(color ?? P.Text), TextWrapping = wrap, TextTrimming = wrap == TextWrapping.NoWrap ? TextTrimming.CharacterEllipsis : TextTrimming.None };
+        new TextBlock()
+        {
+            Text = text, FontSize = size, FontWeight = weight, Foreground = P.B(color ?? P.Text), TextWrapping = wrap,
+            TextTrimming = wrap == TextWrapping.NoWrap ? TextTrimming.CharacterEllipsis : TextTrimming.None,
+            FlowDirection = text.StartsWith('\u200E') ? FlowDirection.LeftToRight : FlowDirection.RightToLeft,
+        }.Inherit(text);
+
+    /// <summary>Numbers with units stay left-to-right; everything else inherits the page direction.</summary>
+    private static TextBlock Inherit(this TextBlock t, string text)
+    {
+        if (!text.StartsWith('\u200E')) t.ClearValue(Visual.FlowDirectionProperty);
+        return t;
+    }
+
+    /// <summary>Marks a TextBlock whose text is updated later with numbers/units as left-to-right.</summary>
+    public static TextBlock Num(TextBlock t)
+    {
+        t.FlowDirection = FlowDirection.LeftToRight;
+        if (L.Rtl) t.HorizontalAlignment = Avalonia.Layout.HorizontalAlignment.Right;
+        return t;
+    }
 
     public static TextBlock Title(string text) => T(text, 30, FontWeight.Bold);
     public static TextBlock Section(string text) => T(text.ToUpperInvariant(), 11.5, FontWeight.SemiBold, P.Text3);
@@ -101,6 +121,7 @@ public static class Ui
         Padding = new Thickness(8, 2),
         Child = T(text, size, FontWeight.SemiBold, fg),
         VerticalAlignment = VerticalAlignment.Center,
+        FlowDirection = text.StartsWith('\u200E') ? FlowDirection.LeftToRight : (L.Rtl ? FlowDirection.RightToLeft : FlowDirection.LeftToRight),
     };
 
     public static Border Sep() => new() { Height = 1, Background = P.B(P.Separator), Margin = new Thickness(0, 4) };
@@ -261,8 +282,11 @@ public static class Ui
         string[] u = ["B", "KB", "MB", "GB", "TB"];
         var i = 0;
         while (b >= 1024 && i < u.Length - 1) { b /= 1024; i++; }
-        return i == 0 ? $"{b:0} {u[i]}" : $"{b:0.##} {u[i]}";
+        return Ltr(i == 0 ? $"{b:0} {u[i]}" : $"{b:0.##} {u[i]}");
     }
 
-    public static string Speed(double bps) => Bytes(bps) + "/s";
+    public static string Speed(double bps) => Ltr(Bytes(bps) + "/s");
+
+    /// <summary>Keeps numbers with units ("4 ms", "1.2 GB") in reading order inside RTL text.</summary>
+    public static string Ltr(string s) => s.Length > 0 && s[0] == '\u200E' ? s : "\u200E" + s + "\u200E";
 }

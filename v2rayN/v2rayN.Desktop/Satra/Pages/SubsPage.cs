@@ -24,14 +24,28 @@ public class SubsPage : IPage
     private async Task AddAsync()
     {
         await SatraCore.I.AddFromClipboardAsync(await SatraShell.I.ClipboardText());
-        Refresh();
+        _ = BuildAsync(true);
     }
 
     public void Refresh() => _ = BuildAsync();
 
-    private async Task BuildAsync()
+    private string _sig = "";
+    private bool _building, _built;
+
+    private async Task BuildAsync(bool force = false)
+    {
+        if (_building) return;
+        _building = true;
+        try { await BuildCoreAsync(force); } finally { _building = false; }
+    }
+
+    private async Task BuildCoreAsync(bool force)
     {
         var subs = await AppManager.Instance.SubItems() ?? [];
+        var st = SatraState.I;
+        var sig = string.Join("|", subs.Select(s => $"{s.Id}{s.Enabled}{s.Url}{st.Hub.ContainsKey(s.Id)}{(st.Subs.TryGetValue(s.Id, out var m) ? $"{m.Up + m.Down}{m.Total}{m.Expire}{m.Title}{m.Announce}{m.RenewUrl}{m.SupportUrl}" : "")}"));
+        if (!force && sig == _sig) return;
+        _sig = sig;
         _list.Children.Clear();
         if (subs.Count == 0)
         {
@@ -40,7 +54,9 @@ public class SubsPage : IPage
             return;
         }
         var i = 0;
-        foreach (var s in subs) _list.Children.Add(Ui.Enter(Card(s), i++ * 40));
+        var animate = force || !_built;
+        _built = true;
+        foreach (var s in subs) _list.Children.Add(animate ? Ui.Enter(Card(s), i++ * 40) : Card(s));
     }
 
     private Control Card(SubItem s)
@@ -71,7 +87,7 @@ public class SubsPage : IPage
         }
         else if (m?.HubBase is { Length: > 0 })
         {
-            actions.Add(Ui.Btn(L.S("hub_register"), Ui.Kind.Tinted, async () => { await HubSync.EnsureRegisteredAsync(s); Refresh(); }, size: 13));
+            actions.Add(Ui.Btn(L.S("hub_register"), Ui.Kind.Tinted, async () => { await HubSync.EnsureRegisteredAsync(s); _ = BuildAsync(true); }, size: 13));
         }
         kids.Add(new WrapPanel { Children = { Ui.H(8, actions.ToArray()) } });
         return Ui.Card(Ui.V(12, kids.ToArray()), new Thickness(20, 16), s.Enabled ? null : P.Lerp(P.Surface, P.Bg, 0.5));
@@ -79,34 +95,42 @@ public class SubsPage : IPage
 
     private static string HostOf(string url) => Uri.TryCreate(url, UriKind.Absolute, out var u) ? u.Host : "";
 
-    private static async Task<HubClient?> Owner(string subId)
+    // owner PIN is kept in memory only for this session
+    private static readonly Dictionary<string, string> Pins = [];
+
+    private static HubClient? Client(string subId)
     {
         var c = HubSync.ClientFor(subId);
-        if (c == null) return null;
-        if (c.Pin == null)
-        {
-            var pin = await SatraShell.I.Prompt(L.S("pick_pin"), "PIN", secret: true);
-            if (string.IsNullOrEmpty(pin)) return null;
-            c.Pin = pin;
-        }
+        if (c != null && Pins.TryGetValue(subId, out var p)) c.Pin = p;
         return c;
     }
 
-    private static async Task<T?> Try<T>(HubClient c, Func<Task<T>> f)
+    private static Task<HubClient?> Owner(string subId) => Task.FromResult(Client(subId));
+
+    /// <summary>Runs a Hub call; if the server asks for the owner PIN, prompts once and retries.</summary>
+    private static async Task<T?> Try<T>(HubClient c, Func<Task<T>> f, string? subId = null)
     {
-        try { return await f(); }
-        catch (HubException e)
+        for (var attempt = 0; attempt < 3; attempt++)
         {
-            if (e.Code.Contains("pin", StringComparison.OrdinalIgnoreCase)) { c.Pin = null; SatraCore.I.Notify(L.S("wrong_pin")); }
-            else SatraCore.I.Notify(e.Message);
+            try { return await f(); }
+            catch (HubException e) when (e.Code.Contains("pin", StringComparison.OrdinalIgnoreCase))
+            {
+                if (attempt > 0) SatraCore.I.Notify(L.S("wrong_pin"));
+                var pin = await SatraShell.I.Prompt(L.S("pick_pin"), "PIN", secret: true);
+                if (string.IsNullOrEmpty(pin)) return default;
+                c.Pin = pin;
+                var sid = subId ?? SatraState.I.Hub.FirstOrDefault(kv => kv.Value.Token == c.Token).Key;
+                if (sid != null) Pins[sid] = pin;
+            }
+            catch (HubException e) { SatraCore.I.Notify(e.Message); return default; }
+            catch (Exception e) { SatraCore.I.Notify(e.Message); return default; }
         }
-        catch (Exception e) { SatraCore.I.Notify(e.Message); }
         return default;
     }
 
     private async Task DevicesSheet(string subId)
     {
-        var c = HubSync.ClientFor(subId);
+        var c = Client(subId);
         if (c == null) return;
         var list = await Try(c, () => c.Devices());
         if (list == null) return;
@@ -136,7 +160,7 @@ public class SubsPage : IPage
 
     private static async Task SetPin(string subId)
     {
-        var c = HubSync.ClientFor(subId);
+        var c = Client(subId);
         if (c == null) return;
         var old = await SatraShell.I.Prompt(L.S("pick_pin") + " (old / empty)", "PIN", true);
         var nw = await SatraShell.I.Prompt(L.S("set_pin"), "PIN", true);
@@ -146,7 +170,7 @@ public class SubsPage : IPage
 
     private async Task LimitsSheet(string subId, string? deviceId = null, string? deviceName = null)
     {
-        var c = HubSync.ClientFor(subId);
+        var c = Client(subId);
         if (c == null) return;
         var limits = await Try(c, () => c.Limits());
         if (limits == null) return;
@@ -162,7 +186,7 @@ public class SubsPage : IPage
             var frac = q > 0 ? Math.Min(1, (double)used / q) : 1;
             var valsTxt = string.Join(", ", l["match"]?["values"]?.AsArray().Select(x => x?.ToString()) ?? []);
             var head = Ui.Row(Ui.V(2, Ui.T(l["name"]?.ToString() is { Length: > 0 } n ? n : valsTxt, 14.5, FontWeight.SemiBold),
-                    Ui.Caption($"{l["match"]?["type"]} · {valsTxt} · {PeriodText(l["period"]?.ToString())}" + (l["scope"]?.ToString() == "device" ? $" · {L.S("this_device")}" : ""), P.Text3)),
+                    Ui.Caption($"{l["match"]?["type"]} · {valsTxt} · {PeriodText(l["period"]?.ToString())}" + (l["scope"]?.ToString() == "device" ? " · " + (l["deviceId"]?.ToString() == SatraState.I.Hub[subId].DeviceId ? L.S("this_device") : L.S("devices") + " " + l["deviceId"]) : ""), P.Text3)),
                 Ui.H(4, ex ? Ui.Pill(L.S("blocked"), P.Danger, P.DangerSoft) : Ui.Pill($"{Ui.Bytes(used)} / {Ui.Bytes(q)}", P.Text2, P.Fill),
                     Ui.IconBtn("+", async () =>
                     {
@@ -199,7 +223,7 @@ public class SubsPage : IPage
             };
             if (await Try(oc, async () => { await oc.PutLimit(body); return true; })) { close(); await LimitsSheet(subId, deviceId, deviceName); }
         }, "+", 13);
-        var form = Ui.Card(Ui.V(10, Ui.Section(L.S("add_limit")), Ui.H(8, type, per, mb), vals, add), new Thickness(14), P.Raised);
+        var form = Ui.Card(Ui.V(10, Ui.Section(L.S("add_limit")), Ui.H(8, type, per, mb, Ui.T("MB", 13, FontWeight.Medium, P.Text2)), vals, add), new Thickness(14), P.Raised);
         var title = L.S("server_limits") + (deviceName != null ? " · " + deviceName : "");
         close = SatraShell.I.Sheet(title, Ui.V(14, Ui.Group(rows.ToArray()), form), 620);
     }
