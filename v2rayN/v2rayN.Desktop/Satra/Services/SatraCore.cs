@@ -151,7 +151,9 @@ public class SatraCore : ReactiveObject
                         return;
                     }
                     Status.SystemProxySelected = (int)ESysProxyType.ForcedClear;
+                    // TunPrivilege ensured CAP_NET_ADMIN; AllowEnableTun uses LinuxCaps (/usr/sbin/getcap) so no sudo prompt.
                     if (!Status.EnableTun) Status.EnableTun = true;
+                    else Status.ReloadRequested.Publish();
                     break;
                 case "socks":
                     if (Status.EnableTun) Status.EnableTun = false;

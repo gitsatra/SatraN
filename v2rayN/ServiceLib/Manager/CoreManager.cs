@@ -350,7 +350,7 @@ public class CoreManager
         {
             // SatraN: prefer CAP_NET_ADMIN on the live binary (user data dir). Marker alone is not enough —
             // copies from /opt drop capabilities. TunPrivilege.EnsureAsync repairscaps before connect.
-            var hasCaps = Utils.IsLinux() && File.Exists(fileName + ".caps") && HasCapNetAdmin(fileName);
+            var hasCaps = Utils.IsLinux() && LinuxCaps.HasNetAdmin(fileName);
             if (mayNeedSudo && !hasCaps
                 && ShouldRunAsSudo(isTunLaunch, coreInfo.CoreType, Utils.IsNonWindows()))
             {
@@ -410,33 +410,6 @@ public class CoreManager
                 _processJob?.AddProcess(processHandle);
             }
             catch { }
-        }
-    }
-
-    private static bool HasCapNetAdmin(string path)
-    {
-        try
-        {
-            var real = path;
-            try { var li = new FileInfo(path); if (li.LinkTarget != null) real = Path.GetFullPath(Path.Combine(Path.GetDirectoryName(path)!, li.LinkTarget)); } catch { }
-            foreach (var pth in new[] { real, path }.Distinct())
-            {
-                var psi = new System.Diagnostics.ProcessStartInfo("getcap", [pth])
-                {
-                    UseShellExecute = false,
-                    RedirectStandardOutput = true,
-                    RedirectStandardError = true,
-                };
-                using var p = System.Diagnostics.Process.Start(psi)!;
-                var o = p.StandardOutput.ReadToEnd();
-                p.WaitForExit(2000);
-                if (o.Contains("cap_net_admin", StringComparison.OrdinalIgnoreCase)) return true;
-            }
-            return false;
-        }
-        catch
-        {
-            return false;
         }
     }
 

@@ -112,8 +112,24 @@ public partial class MainWindow : WindowBase<MainWindowViewModel>
 
     private async Task DelegateSnackMsg(string content)
     {
+        // Drop legacy v2rayN ping/speed spam; SatraN shows results in-row / Satra toasts.
+        if (IsLegacySpeedSnack(content)) return;
+        if (v2rayN.Desktop.Satra.SatraShell.I != null)
+        {
+            v2rayN.Desktop.Satra.SatraShell.I.Toast(content);
+            return;
+        }
         _manager?.Show(new Avalonia.Controls.Notifications.Notification(null, content, NotificationType.Information));
         await Task.CompletedTask;
+    }
+
+    private static bool IsLegacySpeedSnack(string content)
+    {
+        if (string.IsNullOrWhiteSpace(content)) return true;
+        if (content.Contains("Test completed", StringComparison.OrdinalIgnoreCase)) return true;
+        if (content.Contains("Speedtest", StringComparison.OrdinalIgnoreCase)) return true;
+        if (content.StartsWith('[') && (content.Contains("ms") || content.Contains("VLESS") || content.Contains("VMess") || content.Contains("Trojan"))) return true;
+        return false;
     }
 
     private void OnHotkeyHandler(EGlobalHotkey e)

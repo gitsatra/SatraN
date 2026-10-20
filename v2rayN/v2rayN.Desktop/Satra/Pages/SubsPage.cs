@@ -64,8 +64,28 @@ public class SubsPage : IPage
         SatraState.I.Subs.TryGetValue(s.Id, out var m);
         var title = Ui.CleanName(m?.Title is { Length: > 0 } t ? t : s.Remarks);
         var kids = new List<Control>();
-        var enabled = Ui.Switch(s.Enabled, async v => { s.Enabled = v; await ConfigHandler.AddSubItem(AppManager.Instance.Config, s); SatraCore.I.Notify(L.S("reconnect_note")); });
-        kids.Add(Ui.Row(Ui.V(2, Ui.T(title, 18, FontWeight.Bold), Ui.Caption(SatraState.I.Hub.ContainsKey(s.Id) ? "Satra Hub · " + L.S("hub_registered") : HostOf(s.Url), P.Text3)), enabled));
+        var enabled = Ui.Switch(s.Enabled, async v => { s.Enabled = v; await ConfigHandler.AddSubItem(AppManager.Instance.Config, s); SatraCore.I.Notify(L.S("reconnect_note")); _ = BuildAsync(true); });
+
+        var cfgCount = SatraCore.I.Profiles.ProfileItems.Count(p => p.Subid == s.Id);
+        var updated = m is { Fetched: > 0 }
+            ? L.F("updated_ago", RelTime(m.Fetched))
+            : L.S("never_updated");
+        var subMeta = SatraState.I.Hub.ContainsKey(s.Id)
+            ? "Satra Hub · " + L.S("hub_registered")
+            : $"{L.F("configs_count", cfgCount)} · {updated}";
+
+        var tile = new Border
+        {
+            Width = 44, Height = 44, CornerRadius = Ui.RCtl,
+            Background = P.B(s.Enabled ? P.AccentSoft : P.Fill),
+            Child = new TextBlock
+            {
+                Text = "▣", FontSize = 20, Foreground = P.B(s.Enabled ? P.Accent : P.Text3),
+                HorizontalAlignment = Avalonia.Layout.HorizontalAlignment.Center,
+                VerticalAlignment = Avalonia.Layout.VerticalAlignment.Center,
+            },
+        };
+        kids.Add(Ui.Row(Ui.H(12, tile, Ui.V(3, Ui.T(title, 17, FontWeight.Bold), Ui.Caption(subMeta, P.Text3))), enabled));
 
         if (m != null && (m.Total > 0 || m.Expire > 0 || m.Up + m.Down > 0))
         {
@@ -74,22 +94,31 @@ public class SubsPage : IPage
             var col = P.Level(frac);
             if (m.Total > 0)
             {
-                kids.Add(Ui.Bar(frac, col, 8));
                 var left = Math.Max(0, m.Total - used);
+                var leftPct = (int)Math.Round(100 * (1 - frac));
+                kids.Add(Ui.Bar(frac, col, 10));
                 kids.Add(Ui.Row(
-                    Ui.V(3,
-                        Ui.T(L.F("quota_left", Ui.Bytes(left), Ui.Bytes(m.Total)), 15, FontWeight.SemiBold, col, TextWrapping.Wrap),
-                        Ui.Caption($"{Ui.Bytes(used)} {L.S("used")}", P.Text3)),
-                    Ui.Pill(time, col, P.Lerp(P.Surface, col, 0.16))));
+                    Ui.V(4,
+                        Ui.T(L.F("quota_left", Ui.Bytes(left), Ui.Bytes(m.Total)), 16, FontWeight.Bold, col, TextWrapping.Wrap),
+                        Ui.Caption($"{Ui.Bytes(used)} {L.S("used")} · {L.F("quota_pct", Math.Clamp(leftPct, 0, 100))}", P.Text3)),
+                    ExpirePill(m)));
             }
             else
             {
-                kids.Add(Ui.Row(
-                    Ui.T(data, 14, FontWeight.SemiBold, P.Text2, TextWrapping.Wrap),
-                    Ui.Pill(time, col, P.Lerp(P.Surface, col, 0.16))));
+                kids.Add(Ui.Row(Ui.T(data, 14, FontWeight.SemiBold, P.Text2, TextWrapping.Wrap), ExpirePill(m)));
             }
+
+            var badges = new List<Control>();
+            if (s.AutoUpdateInterval > 0) badges.Add(Ui.Pill(L.S("auto_update_on"), P.Info, P.InfoSoft, 10.5));
+            if (!s.Enabled) badges.Add(Ui.Pill(L.S("sub_off"), P.Text3, P.Fill, 10.5));
+            if (badges.Count > 0) kids.Add(new WrapPanel { Orientation = Avalonia.Layout.Orientation.Horizontal, Children = { Ui.H(6, badges.ToArray()) } });
+
             if (!string.IsNullOrWhiteSpace(m.Announce))
                 kids.Add(new Border { Background = P.B(P.InfoSoft), CornerRadius = Ui.RCtl, Padding = new Thickness(12, 8), Child = Ui.H(10, Icons.Make("📣", 15, P.Info), Ui.T(m.Announce, 13, FontWeight.Normal, P.Text, TextWrapping.Wrap)) });
+        }
+        else
+        {
+            kids.Add(Ui.Caption(HostOf(s.Url), P.Text3));
         }
 
         var actions = new List<Control> { Ui.Btn(L.S("update"), Ui.Kind.Ghost, () => _ = SatraCore.I.UpdateSubsAsync(s.Id), "⟳", 13) };
@@ -105,7 +134,27 @@ public class SubsPage : IPage
             actions.Add(Ui.Btn(L.S("hub_register"), Ui.Kind.Tinted, async () => { await HubSync.EnsureRegisteredAsync(s); _ = BuildAsync(true); }, size: 13));
         }
         kids.Add(new WrapPanel { Children = { Ui.H(8, actions.ToArray()) } });
-        return Ui.Card(Ui.V(12, kids.ToArray()), new Thickness(20, 16), s.Enabled ? null : P.Lerp(P.Surface, P.Bg, 0.5));
+        return Ui.Card(Ui.V(14, kids.ToArray()), new Thickness(20, 16), s.Enabled ? null : P.Lerp(P.Surface, P.Bg, 0.5));
+    }
+
+    private static Border ExpirePill(SubMeta m)
+    {
+        if (m.Expire <= 0) return Ui.Pill(L.S("no_expiry"), P.Text3, P.Fill, 10.5);
+        var exp = SubInfo.ExpireUnixSeconds(m.Expire);
+        var left = exp - DateTimeOffset.UtcNow.ToUnixTimeSeconds();
+        var col = left <= 0 ? P.Danger : left < 3 * 86400 ? P.Warning : P.Text2;
+        var soft = left <= 0 ? P.DangerSoft : left < 3 * 86400 ? P.WarningSoft : P.Fill;
+        var text = left <= 0 ? L.S("expired") : left < 86400 ? L.S("expires_today") : L.F("days_left", Math.Ceiling(left / 86400.0));
+        return Ui.Pill(text, col, soft, 10.5);
+    }
+
+    private static string RelTime(long unixSec)
+    {
+        var ago = DateTimeOffset.UtcNow - DateTimeOffset.FromUnixTimeSeconds(unixSec);
+        if (ago.TotalMinutes < 1) return "now";
+        if (ago.TotalHours < 1) return $"{(int)ago.TotalMinutes}m";
+        if (ago.TotalDays < 1) return $"{(int)ago.TotalHours}h";
+        return $"{(int)ago.TotalDays}d";
     }
 
     private static string HostOf(string url) => Uri.TryCreate(url, UriKind.Absolute, out var u) ? u.Host : "";

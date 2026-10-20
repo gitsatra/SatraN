@@ -17,7 +17,7 @@ public class HomePage : IPage
     private readonly TextBlock _hint = Ui.T("", 13.5, FontWeight.Normal, P.Text2);
     private readonly TextBlock _timer = Ui.T("", 13.5, FontWeight.Medium, P.Text2);
     private readonly ContentControl _server = new();
-    private readonly ContentControl _homePing = new();
+    private ContentControl _homePing = new();
     private readonly TextBlock _down = Ui.Num(Ui.T("0 B/s", 22, FontWeight.Bold)), _up = Ui.Num(Ui.T("0 B/s", 22, FontWeight.Bold));
     private readonly TextBlock _downTot = Ui.Caption(""), _upTot = Ui.Caption("");
     private readonly TextBlock _today = Ui.Num(Ui.T("", 15, FontWeight.SemiBold));
@@ -211,8 +211,8 @@ public class HomePage : IPage
             meta.Add(Ui.Btn(Ui.Ltr(ip) + "  ⧉", Ui.Kind.Ghost, () => _ = SatraShell.I.Copy(ip), size: 11));
         var q = QuotaPill(a.Subid);
         if (q != null) meta.Add(q);
-        _homePing.Content = ServersPage.PingPill(ServersPage.Delay(a));
-        // Ping the active config from Home (like Android) without leaving the page
+        // Fresh ContentControl each rebuild — reusing _homePing under a new parent crashes Avalonia.
+        _homePing = new ContentControl { Content = ServersPage.PingPill(ServersPage.Delay(a)) };
         var pingBtn = Ui.IconBtn("◎", () => _ = SatraCore.I.RunTestAsync(ESpeedActionType.Realping, [a]), L.S("ping"), P.Text2, 15);
         var right = Ui.H(8, _homePing, pingBtn, Ui.Btn(L.S("servers"), Ui.Kind.Ghost, () => SatraShell.I.Go("servers"), size: 13));
         return Ui.Enter(Ui.Card(Ui.Row(left, right), new Thickness(18, 12)));

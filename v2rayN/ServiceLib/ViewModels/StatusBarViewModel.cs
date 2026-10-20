@@ -471,7 +471,7 @@ public partial class StatusBarViewModel : MyReactiveObject
         {
             // SatraN: live binary under ~/.local/share must actually have CAP_NET_ADMIN (copies from /opt drop caps)
             var sb = CoreInfoManager.Instance.GetCoreExecFile(CoreInfoManager.Instance.GetCoreInfo(ECoreType.sing_box), out _);
-            if (sb.IsNotEmpty() && HasCapNetAdmin(sb)) return true;
+            if (sb.IsNotEmpty() && LinuxCaps.HasNetAdmin(sb)) return true;
             return AppManager.Instance.LinuxSudoPwd.IsNotEmpty();
         }
         else if (Utils.IsMacOS())
@@ -479,33 +479,6 @@ public partial class StatusBarViewModel : MyReactiveObject
             return AppManager.Instance.LinuxSudoPwd.IsNotEmpty();
         }
         return false;
-    }
-
-    private static bool HasCapNetAdmin(string path)
-    {
-        try
-        {
-            var real = path;
-            try { var li = new FileInfo(path); if (li.LinkTarget != null) real = Path.GetFullPath(Path.Combine(Path.GetDirectoryName(path)!, li.LinkTarget)); } catch { }
-            foreach (var pth in new[] { real, path }.Distinct())
-            {
-                var psi = new System.Diagnostics.ProcessStartInfo("getcap", [pth])
-                {
-                    UseShellExecute = false,
-                    RedirectStandardOutput = true,
-                    RedirectStandardError = true,
-                };
-                using var p = System.Diagnostics.Process.Start(psi)!;
-                var o = p.StandardOutput.ReadToEnd();
-                p.WaitForExit(2000);
-                if (o.Contains("cap_net_admin", StringComparison.OrdinalIgnoreCase)) return true;
-            }
-            return false;
-        }
-        catch
-        {
-            return false;
-        }
     }
 
     #endregion System proxy and Routings

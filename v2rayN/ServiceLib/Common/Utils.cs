@@ -1405,6 +1405,15 @@ public class Utils
         {
             return null;
         }
+        // Symlinks to packaged cores: chmod on the target can drop CAP_NET_ADMIN. Skip.
+        try
+        {
+            if (new FileInfo(fileName).LinkTarget is { Length: > 0 } || File.Exists(fileName + ".caps"))
+            {
+                return string.Empty;
+            }
+        }
+        catch { }
         if (SetUnixFileMode(fileName))
         {
             Logging.SaveLog($"Successfully set the file execution permission, {fileName}");

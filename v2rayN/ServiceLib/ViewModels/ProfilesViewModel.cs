@@ -278,8 +278,8 @@ public partial class ProfilesViewModel : MyReactiveObject
     {
         if (result.IndexId.IsNullOrEmpty())
         {
-            NoticeManager.Instance.SendMessageEx(result.Delay);
-            NoticeManager.Instance.Enqueue(result.Delay);
+            // SatraN: ping/speed progress stays in-row; do not surface legacy v2rayN snack/log spam
+            // ("[VLESS] …", "Test completed").
             SpeedTestUpdated?.Invoke();
             return;
         }
