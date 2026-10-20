@@ -56,7 +56,14 @@ inject_core(app)
 os.chmod(os.path.join(app, exe), 0o755)
 
 if rid.startswith("win"):
+    # Admin install/uninstall helpers (TUN needs elevation on Windows)
+    win_dir = os.path.join(os.path.dirname(__file__), "windows")
+    for name in ("Install-SatraN.ps1", "Uninstall-SatraN.ps1", "SatraN-Setup.cmd"):
+        src = os.path.join(win_dir, name)
+        if os.path.exists(src):
+            shutil.copy2(src, os.path.join(app, name))
     zipdir(app, os.path.join(out, f"SatraN-{ver}-{rid}.zip"), "SatraN")
+
 
 elif rid.startswith("linux"):
     with tarfile.open(os.path.join(out, f"SatraN-{ver}-{rid}.tar.gz"), "w:gz") as t:

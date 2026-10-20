@@ -348,10 +348,9 @@ public class CoreManager
 
         try
         {
-            // SatraN: prefer CAP_NET_ADMIN on the live binary (user data dir). Marker alone is not enough —
-            // copies from /opt drop capabilities. TunPrivilege.EnsureAsync repairscaps before connect.
-            var hasCaps = Utils.IsLinux() && LinuxCaps.HasNetAdmin(fileName);
-            if (mayNeedSudo && !hasCaps
+            // Linux (SatraN): never sudo/pkexec the core. TUN uses file capabilities on the packaged
+            // binary (like Outline). macOS still uses the sudo helper when needed.
+            if (mayNeedSudo && !Utils.IsLinux()
                 && ShouldRunAsSudo(isTunLaunch, coreInfo.CoreType, Utils.IsNonWindows()))
             {
                 _linuxSudo = true;

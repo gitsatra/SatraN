@@ -3,6 +3,7 @@
 	<PropertyGroup>
 		<OutputType>WinExe</OutputType>
 		<ApplicationIcon>Assets\v2rayN.ico</ApplicationIcon>
+		<ApplicationManifest>app.manifest</ApplicationManifest>
 		<BuiltInComInteropSupport>true</BuiltInComInteropSupport>
 		<AvaloniaUseCompiledBindingsByDefault>true</AvaloniaUseCompiledBindingsByDefault>
 		<AssemblyName>SatraN</AssemblyName>

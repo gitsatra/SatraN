@@ -131,7 +131,7 @@ public static class L
         ["lan_pass"] = "Password",
         ["lan_hotspot"] = "Turn on Mobile Hotspot",
         ["lan_note"] = "Your firewall may ask to allow SatraN on private networks.",
-        ["vpn_denied"] = "VPN needs the SatraN package capabilities. Reinstall the .deb, or use System proxy.",
+        ["vpn_denied"] = "VPN capabilities missing. Run: sudo dpkg -i satran_*.deb — then connect again (no password in the app).",
     };
 
     private static readonly Dictionary<string, string> Fa = new()
@@ -249,7 +249,7 @@ public static class L
         ["lan_pass"] = "رمز عبور",
         ["lan_hotspot"] = "روشن کردن هات‌اسپات ویندوز",
         ["lan_note"] = "ممکن است فایروال برای اجازه به SatraN در شبکه خصوصی سؤال کند.",
-        ["vpn_denied"] = "برای VPN باید قابلیت‌های بستهٔ SatraN روی سیستم باشد. دوباره .deb را نصب کنید یا «پراکسی سیستم» را بزنید.",
+        ["vpn_denied"] = "قابلیت VPN روی سیستم نیست. در ترمینال بزن: sudo dpkg -i satran_*.deb — داخل اپ دیگر پسورد نمی‌خواهد.",
     };
 
     private static readonly Dictionary<string, string> Ru = new()
@@ -367,6 +367,6 @@ public static class L
         ["lan_pass"] = "Пароль",
         ["lan_hotspot"] = "Включить мобильный хот-спот",
         ["lan_note"] = "Брандмауэр может спросить разрешение для SatraN в частной сети.",
-        ["vpn_denied"] = "Для VPN нужны capabilities пакета SatraN. Переустановите .deb или выберите системный прокси.",
+        ["vpn_denied"] = "Нет capabilities для VPN. Выполните: sudo dpkg -i satran_*.deb — в приложении пароль больше не нужен.",
     };
 }

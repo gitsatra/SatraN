@@ -53,7 +53,8 @@ public static class LinuxCaps
                 if (p == null) continue;
                 var o = p.StandardOutput.ReadToEnd();
                 p.WaitForExit(2000);
-                return o;
+                // getcap on a symlink prints nothing — keep trying other bins/paths
+                if (!string.IsNullOrWhiteSpace(o)) return o;
             }
             catch (System.ComponentModel.Win32Exception) { /* next candidate */ }
             catch { }
