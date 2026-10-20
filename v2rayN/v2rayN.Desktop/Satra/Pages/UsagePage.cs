@@ -1,10 +1,11 @@
 using Avalonia.Layout;
+using Avalonia.Threading;
 using v2rayN.Desktop.Satra.Controls;
 using v2rayN.Desktop.Satra.Services;
 
 namespace v2rayN.Desktop.Satra.Pages;
 
-/// <summary>Usage: 7/30-day data and connected-hours charts, totals, and limits on this computer.</summary>
+/// <summary>Usage: charts, live per-process traffic from Clash API, and local limits.</summary>
 public class UsagePage : IPage
 {
     private readonly Grid _root = new() { Margin = new Thickness(36, 28, 36, 0), RowDefinitions = new RowDefinitions("Auto,*") };
@@ -13,8 +14,12 @@ public class UsagePage : IPage
     private readonly BarChart _hours = new() { BarColor = P.Info, Height = 120, Format = v => $"{v:0.#} h" };
     private readonly TextBlock _sumDown = Ui.Num(Ui.T("", 22, FontWeight.Bold)), _sumUp = Ui.Num(Ui.T("", 22, FontWeight.Bold)), _sumTotal = Ui.Num(Ui.T("", 22, FontWeight.Bold)), _sumHours = Ui.Num(Ui.T("", 22, FontWeight.Bold));
     private readonly StackPanel _limits = new() { Spacing = 0 };
+    private readonly StackPanel _live = new() { Spacing = 0 };
     private int _days = 7;
     private readonly Border _seg7, _seg30;
+    private readonly DispatcherTimer _liveTimer;
+    private Dictionary<string, (ulong up, ulong down)> _prevSnap = new();
+    private DateTime _prevAt = DateTime.MinValue;
 
     public Control View => _root;
 
@@ -40,12 +45,19 @@ public class UsagePage : IPage
         _body.Children.Add(Ui.Card(sums, new Thickness(20, 16)));
         _body.Children.Add(Ui.Card(Ui.V(12, Ui.Section(L.S("data_per_day")), _data), new Thickness(20, 16)));
         _body.Children.Add(Ui.Card(Ui.V(12, Ui.Section(L.S("hours_per_day")), _hours), new Thickness(20, 16)));
+        _body.Children.Add(Ui.Section(L.S("live_apps")));
+        _body.Children.Add(new Border { Background = P.B(P.Surface), CornerRadius = Ui.RCard, ClipToBounds = true, Child = _live });
         _body.Children.Add(Ui.Row(Ui.Section(L.S("local_limits")), Ui.Btn(L.S("add_limit"), Ui.Kind.Tinted, () => AddLimitSheet(), "+", 13)));
         _body.Children.Add(new Border { Background = P.B(P.Surface), CornerRadius = Ui.RCard, ClipToBounds = true, Child = _limits });
         _body.Children.Add(Ui.Caption(L.S("server_limits") + " → " + L.S("subs") + " · " + L.S("limits"), P.Text3));
         var sv = new ScrollViewer { Content = _body };
         Grid.SetRow(sv, 1);
         _root.Children.Add(sv);
+
+        _liveTimer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(2) };
+        _liveTimer.Tick += (_, _) => _ = RefreshLiveAsync();
+        _root.AttachedToVisualTree += (_, _) => { _liveTimer.Start(); _ = RefreshLiveAsync(); };
+        _root.DetachedFromVisualTree += (_, _) => _liveTimer.Stop();
     }
 
     public void Refresh()
@@ -65,6 +77,124 @@ public class UsagePage : IPage
         _sumTotal.Text = Ui.Bytes(u.Sum(x => (x?.Up ?? 0) + (x?.Down ?? 0)));
         _sumHours.Text = $"{u.Sum(x => x?.Seconds ?? 0) / 3600.0:0.#} h";
         BuildLimits();
+        _ = RefreshLiveAsync();
+    }
+
+    private async Task RefreshLiveAsync()
+    {
+        try
+        {
+            var ret = await ClashApiManager.Instance.GetConnections();
+            var now = DateTime.UtcNow;
+            var agg = new Dictionary<string, (string name, ulong up, ulong down, string? host)>(StringComparer.OrdinalIgnoreCase);
+            foreach (var c in ret?.connections ?? [])
+            {
+                var meta = c.metadata;
+                if (meta == null) continue;
+                var key = meta.processPath.IsNotEmpty() ? meta.processPath! : (meta.process.IsNotEmpty() ? meta.process! : (meta.host.IsNotEmpty() ? "host:" + meta.host : "unknown"));
+                var name = meta.process.IsNotEmpty()
+                    ? meta.process!
+                    : (meta.processPath.IsNotEmpty() ? Path.GetFileName(meta.processPath) : (meta.host ?? "unknown"));
+                if (!agg.TryGetValue(key, out var cur)) cur = (name, 0, 0, meta.host ?? meta.sniffHost);
+                agg[key] = (cur.name, cur.up + c.upload, cur.down + c.download, cur.host ?? meta.host ?? meta.sniffHost);
+            }
+
+            var dt = _prevAt == DateTime.MinValue ? 2.0 : Math.Max(0.5, (now - _prevAt).TotalSeconds);
+            var rows = agg.Select(kv =>
+            {
+                _prevSnap.TryGetValue(kv.Key, out var prev);
+                var dUp = kv.Value.up >= prev.up ? kv.Value.up - prev.up : 0UL;
+                var dDown = kv.Value.down >= prev.down ? kv.Value.down - prev.down : 0UL;
+                var bps = (dUp + dDown) / dt;
+                return (key: kv.Key, kv.Value.name, total: kv.Value.up + kv.Value.down, bps, kv.Value.host);
+            }).OrderByDescending(r => r.bps).ThenByDescending(r => r.total).Take(20).ToList();
+
+            _prevSnap = agg.ToDictionary(kv => kv.Key, kv => (kv.Value.up, kv.Value.down), StringComparer.OrdinalIgnoreCase);
+            _prevAt = now;
+
+            await Dispatcher.UIThread.InvokeAsync(() => BuildLive(rows));
+        }
+        catch (Exception ex)
+        {
+            Logging.SaveLog("UsageLive", ex);
+        }
+    }
+
+    private void BuildLive(List<(string key, string name, ulong total, double bps, string? host)> rows)
+    {
+        _live.Children.Clear();
+        if (rows.Count == 0)
+        {
+            _live.Children.Add(new Border { Padding = new Thickness(16, 14), Child = Ui.Caption(L.S("live_apps_empty"), P.Text3) });
+            return;
+        }
+        var first = true;
+        foreach (var r in rows)
+        {
+            if (!first) _live.Children.Add(new Border { Height = 1, Background = P.B(P.Separator), Margin = new Thickness(14, 0, 0, 0) });
+            first = false;
+            var blocked = SatraState.I.Limits.Any(l => l.Enabled && l.Type == "process" && l.Values.Any(v =>
+                string.Equals(v, r.key, StringComparison.OrdinalIgnoreCase) ||
+                string.Equals(Path.GetFileName(v), r.name, StringComparison.OrdinalIgnoreCase)));
+            var key = r.key;
+            var name = r.name;
+            var right = Ui.H(6,
+                Ui.Caption(Ui.Speed((long)r.bps), P.Text2),
+                Ui.Pill(Ui.Bytes((long)r.total), P.Text2, P.Fill),
+                blocked
+                    ? Ui.Btn(L.S("unblock_app"), Ui.Kind.Tinted, () => UnblockProcess(key, name), null, 12)
+                    : Ui.Btn(L.S("block_app"), Ui.Kind.Danger, () => BlockProcess(key, name), null, 12));
+            var sub = r.host.IsNotEmpty() ? r.host! : (r.key.Contains(Path.DirectorySeparatorChar) || r.key.Contains('/') ? r.key : "");
+            _live.Children.Add(new Border
+            {
+                Padding = new Thickness(14, 10),
+                Child = Ui.Row(Ui.V(2, Ui.T(name, 14, FontWeight.SemiBold), string.IsNullOrEmpty(sub) ? new TextBlock() : Ui.Caption(sub, P.Text3)), right),
+            });
+        }
+    }
+
+    private void BlockProcess(string key, string name)
+    {
+        var match = key.StartsWith("host:", StringComparison.OrdinalIgnoreCase) ? key["host:".Length..] : key;
+        var type = key.StartsWith("host:", StringComparison.OrdinalIgnoreCase) ? "domain" : "process";
+        var existing = SatraState.I.Limits.FirstOrDefault(l => l.Type == type && l.Values.Any(v => string.Equals(v, match, StringComparison.OrdinalIgnoreCase)));
+        if (existing != null)
+        {
+            existing.Enabled = true;
+            existing.QuotaBytes = 0;
+            existing.Exhausted = true;
+        }
+        else
+        {
+            SatraState.I.Limits.Add(new LocalLimit
+            {
+                Name = name,
+                Type = type,
+                Values = [match],
+                QuotaBytes = 0,
+                Exhausted = true,
+                Enabled = true,
+            });
+        }
+        SatraState.Save();
+        _ = SatraCore.I.ApplyLocalLimitsAsync();
+        _limSig = "";
+        BuildLimits();
+        _ = RefreshLiveAsync();
+    }
+
+    private void UnblockProcess(string key, string name)
+    {
+        var match = key.StartsWith("host:", StringComparison.OrdinalIgnoreCase) ? key["host:".Length..] : key;
+        SatraState.I.Limits.RemoveAll(l =>
+            l.Type is "process" or "domain" &&
+            l.Values.Any(v => string.Equals(v, match, StringComparison.OrdinalIgnoreCase) ||
+                              string.Equals(Path.GetFileName(v), name, StringComparison.OrdinalIgnoreCase)));
+        SatraState.Save();
+        _ = SatraCore.I.ApplyLocalLimitsAsync();
+        _limSig = "";
+        BuildLimits();
+        _ = RefreshLiveAsync();
     }
 
     private string _limSig = "";

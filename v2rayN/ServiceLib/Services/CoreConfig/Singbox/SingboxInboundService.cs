@@ -76,7 +76,21 @@ public partial class CoreConfigSingboxService
                     var address6 = _config.TunModeItem.IPv6Address.NullIfEmpty() ?? Global.TunIPv6Address.First();
                     tunInbound.address.Add(address6);
                 }
-                tunInbound.route_exclude_address = _config.TunModeItem.RouteExcludeAddress;
+                // Keep the proxy server off the TUN so outbound to the node does not loop
+                // through auto_route (common Windows "Connected but no traffic" failure).
+                var excludes = new List<string>();
+                if (_config.TunModeItem.RouteExcludeAddress is { Count: > 0 })
+                {
+                    excludes.AddRange(_config.TunModeItem.RouteExcludeAddress);
+                }
+                foreach (var cidr in ResolveNodeExcludeCidrs(_node.Address))
+                {
+                    if (!excludes.Contains(cidr, StringComparer.OrdinalIgnoreCase))
+                    {
+                        excludes.Add(cidr);
+                    }
+                }
+                tunInbound.route_exclude_address = excludes.Count > 0 ? excludes : null;
 
                 _coreConfig.inbounds.Add(tunInbound);
             }
@@ -94,5 +108,53 @@ public partial class CoreConfigSingboxService
         inbound.listen_port = inItem.listen_port + (int)protocol;
         inbound.type = nameof(EInboundProtocol.mixed);
         return inbound;
+    }
+
+    /// <summary>
+    /// CIDRs for the selected node's address so TUN auto_route does not capture the
+    /// outbound path to the proxy. Accepts an IP or resolves a hostname (best-effort).
+    /// </summary>
+    private static List<string> ResolveNodeExcludeCidrs(string? address)
+    {
+        var outList = new List<string>();
+        var nodeAddr = address?.Trim();
+        if (nodeAddr.IsNullOrEmpty())
+        {
+            return outList;
+        }
+
+        void AddIp(string ip)
+        {
+            if (ip.IsNullOrEmpty() || !Utils.IsIpAddress(ip))
+            {
+                return;
+            }
+            var cidr = ip.Contains('/') ? ip : (ip.Contains(':') ? $"{ip}/128" : $"{ip}/32");
+            if (!outList.Contains(cidr, StringComparer.OrdinalIgnoreCase))
+            {
+                outList.Add(cidr);
+            }
+        }
+
+        if (Utils.IsIpAddress(nodeAddr))
+        {
+            AddIp(nodeAddr);
+            return outList;
+        }
+
+        try
+        {
+            using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(2));
+            var entry = Dns.GetHostEntryAsync(nodeAddr, cts.Token).GetAwaiter().GetResult();
+            foreach (var a in entry.AddressList)
+            {
+                AddIp(a.ToString());
+            }
+        }
+        catch (Exception ex)
+        {
+            Logging.SaveLog("SingboxInbound", ex);
+        }
+        return outList;
     }
 }

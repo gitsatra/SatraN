@@ -15,6 +15,7 @@ public class ConnectOrb : Control
     private double _press = 1; // scale
     private double _pressTarget = 1, _pressVel;
     private bool _hover;
+    private bool _pressed;
     public event Action? Clicked;
 
     public ConnectOrb()
@@ -22,14 +23,22 @@ public class ConnectOrb : Control
         Cursor = new Cursor(StandardCursorType.Hand);
         _timer = new DispatcherTimer(TimeSpan.FromMilliseconds(16), DispatcherPriority.Render, (_, _) => Step());
         _timer.Start();
-        PointerPressed += (_, _) => _pressTarget = 0.93;
+        PointerPressed += (_, e) =>
+        {
+            _pressTarget = 0.93;
+            _pressed = true;
+            e.Pointer.Capture(this);
+        };
         PointerReleased += (_, e) =>
         {
             _pressTarget = 1;
-            if (_hover) Clicked?.Invoke();
+            // Fire when the press started on this orb (hover can be false under X11 automation).
+            if (_pressed) Clicked?.Invoke();
+            _pressed = false;
+            e.Pointer.Capture(null);
         };
         PointerEntered += (_, _) => _hover = true;
-        PointerExited += (_, _) => { _hover = false; _pressTarget = 1; };
+        PointerExited += (_, _) => { _hover = false; if (!_pressed) _pressTarget = 1; };
     }
 
     public ConnPhase Phase

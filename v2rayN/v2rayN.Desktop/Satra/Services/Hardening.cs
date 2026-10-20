@@ -5,7 +5,7 @@ namespace v2rayN.Desktop.Satra.Services;
 /// </summary>
 public static class Hardening
 {
-    public const int Revision = 3;
+    public const int Revision = 4;
 
     /// <summary>SatraNG Android SOCKS port — desktop must match so shared docs/QR/hotspot stay consistent.</summary>
     public const int SatraSocksPort = 28888;
@@ -38,6 +38,9 @@ public static class Hardening
                 cfg.TunModeItem.AutoRoute = true;
                 cfg.TunModeItem.StrictRoute = true;
                 cfg.TunModeItem.EnableIPv6Address = true;
+                // Xray+sing-box LegacyProtect needs process_path match (CAP_SYS_PTRACE). Satra uses
+                // setcap NET_ADMIN only — force sing-box for TUN instead.
+                cfg.TunModeItem.EnableLegacyProtect = false;
                 if (string.IsNullOrEmpty(cfg.TunModeItem.Stack)) cfg.TunModeItem.Stack = "mixed";
                 st.Mode = "tun"; // VPN (whole device) is the default — like Outline/OpenVPN
                 if (OperatingSystem.IsWindows()) EnsureHotkey(cfg);
@@ -50,6 +53,13 @@ public static class Hardening
         }
         // Keep Mode defaulted to tun if somehow empty
         if (string.IsNullOrEmpty(st.Mode)) { st.Mode = "tun"; SatraState.Save(); }
+        // Always enforce: LegacyProtect is Xray+sing-box with process_path bypass. Satra uses
+        // sing-box end-to-end for TUN (Linux setcap / Windows wintun) — never the dual-core path.
+        if (cfg.TunModeItem.EnableLegacyProtect)
+        {
+            cfg.TunModeItem.EnableLegacyProtect = false;
+            _ = ConfigHandler.SaveConfig(cfg);
+        }
         foreach (var f in new[] { "guiNConfig.json", "guiNDB.db", "satra.json" }) SecureStore.Restrict(Utils.GetConfigPath(f));
     }
 

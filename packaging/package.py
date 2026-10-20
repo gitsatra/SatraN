@@ -62,7 +62,61 @@ if rid.startswith("win"):
         src = os.path.join(win_dir, name)
         if os.path.exists(src):
             shutil.copy2(src, os.path.join(app, name))
-    zipdir(app, os.path.join(out, f"SatraN-{ver}-{rid}.zip"), "SatraN")
+    zip_path = os.path.join(out, f"SatraN-{ver}-{rid}.zip")
+    zipdir(app, zip_path, "SatraN")
+    # SatraN-Setup: self-extracting archive when 7z is available; else a fat zip named like Setup.
+    setup_zip = os.path.join(out, f"SatraN-Setup-{ver}.zip")
+    shutil.copy2(zip_path, setup_zip)
+
+    # Always also emit a managed Setup.exe (downloads zip from GitHub if needed).
+    setup_proj = os.path.join(os.path.dirname(__file__), "windows", "SatraNSetup", "SatraNSetup.csproj")
+    if os.path.exists(setup_proj):
+        setup_out = os.path.join(work, "setup-pub")
+        subprocess.check_call(["dotnet", "publish", setup_proj, "-c", "Release", "-o", setup_out])
+        built = os.path.join(setup_out, "SatraN-Setup.exe")
+        if os.path.exists(built):
+            shutil.copy2(built, os.path.join(out, f"SatraN-Setup-{ver}.exe"))
+
+    seven = shutil.which("7z") or shutil.which("7za")
+    if seven:
+        sfx_dir = os.path.join(work, "sfx")
+        os.makedirs(sfx_dir, exist_ok=True)
+        # Flat copy for SFX so Install-SatraN.ps1 sits next to SatraN.exe
+        for root, _, files in os.walk(app):
+            for f in files:
+                src = os.path.join(root, f)
+                rel = os.path.relpath(src, app)
+                dst = os.path.join(sfx_dir, rel)
+                os.makedirs(os.path.dirname(dst), exist_ok=True)
+                shutil.copy2(src, dst)
+        setup_exe = os.path.join(out, f"SatraN-Setup-{ver}.exe")
+        # Prefer 7z's default SFX module if present; otherwise leave Setup.zip for the updater.
+        sfx = None
+        for cand in (
+            "/usr/lib/p7zip/7z.sfx",
+            "/usr/libexec/p7zip/7z.sfx",
+            os.path.join(os.path.dirname(seven), "7z.sfx"),
+        ):
+            if os.path.exists(cand):
+                sfx = cand
+                break
+        if sfx:
+            archive = os.path.join(work, "setup.7z")
+            subprocess.check_call([seven, "a", "-t7z", "-mx=7", archive, os.path.join(sfx_dir, "*")], cwd=sfx_dir)
+            with open(setup_exe, "wb") as out_f:
+                out_f.write(open(sfx, "rb").read())
+                out_f.write(open(archive, "rb").read())
+            # Config so SFX auto-runs the setup cmd after extract
+            cfg = os.path.join(work, "config.txt")
+            open(cfg, "w").write(
+                ";!@Install@!UTF-8!\nTitle=\"SatraN Setup\"\nRunProgram=\"SatraN-Setup.cmd\"\n;!@InstallEnd@!\n"
+            )
+            # Rebuild with config prepended (7z ConSfx)
+            with open(setup_exe, "wb") as out_f:
+                out_f.write(open(sfx, "rb").read())
+                out_f.write(open(cfg, "rb").read())
+                out_f.write(open(archive, "rb").read())
+            print("wrote", setup_exe)
 
 
 elif rid.startswith("linux"):
@@ -75,11 +129,13 @@ elif rid.startswith("linux"):
     open(os.path.join(root, "opt/satran/NotStoreConfigHere.txt"), "w").write("configs are stored in ~/.local/share/SatraN\n")
     os.makedirs(os.path.join(root, "usr/bin"))
     with open(os.path.join(root, "usr/bin/satran"), "w") as f:
-        f.write("#!/bin/sh\nexec /opt/satran/SatraN \"$@\"\n")
+        # Force XDG data dir — /opt/satran is not writable for configs; without this
+        # a user-owned install tree stores empty guiConfigs next to the binary.
+        f.write("#!/bin/sh\nexport V2RAYN_LOCAL_APPLICATION_DATA_V2=1\nexec /opt/satran/SatraN \"$@\"\n")
     os.chmod(os.path.join(root, "usr/bin/satran"), 0o755)
     os.makedirs(os.path.join(root, "usr/share/applications"))
     with open(os.path.join(root, "usr/share/applications/satran.desktop"), "w") as f:
-        f.write("[Desktop Entry]\nName=SatraN\nComment=Satra VPN client\nExec=/opt/satran/SatraN\nIcon=satran\nStartupWMClass=SatraN\nTerminal=false\nType=Application\nCategories=Network;\n")
+        f.write("[Desktop Entry]\nName=SatraN\nComment=Satra VPN client\nExec=env V2RAYN_LOCAL_APPLICATION_DATA_V2=1 /opt/satran/SatraN\nIcon=satran\nStartupWMClass=SatraN\nTerminal=false\nType=Application\nCategories=Network;\n")
     icon = os.path.join(os.path.dirname(__file__), "satran.png")
     if os.path.exists(icon):
         shutil.copy2(icon, os.path.join(root, "opt/satran/satran.png"))
@@ -94,10 +150,21 @@ elif rid.startswith("linux"):
     # Outline/OpenVPN-style: helper + polkit so TUN never needs a typed password after install
     helper_src = os.path.join(os.path.dirname(__file__), "satran-fix-caps.sh")
     policy_src = os.path.join(os.path.dirname(__file__), "com.satran.policy")
+    resolved_rules = os.path.join(os.path.dirname(__file__), "com.satran.resolved.rules")
     shutil.copy2(helper_src, os.path.join(root, "opt/satran/bin/satran-fix-caps"))
     os.chmod(os.path.join(root, "opt/satran/bin/satran-fix-caps"), 0o755)
     os.makedirs(os.path.join(root, "usr/share/polkit-1/actions"), exist_ok=True)
     shutil.copy2(policy_src, os.path.join(root, "usr/share/polkit-1/actions/com.satran.policy"))
+    # sing-box TUN configures DNS via systemd-resolved (3 polkit actions). Allow without password.
+    os.makedirs(os.path.join(root, "usr/share/polkit-1/rules.d"), exist_ok=True)
+    shutil.copy2(resolved_rules, os.path.join(root, "usr/share/polkit-1/rules.d/com.satran.resolved.rules"))
+    # apt source so `apt upgrade satran` can work after the first install
+    os.makedirs(os.path.join(root, "etc/apt/sources.list.d"), exist_ok=True)
+    with open(os.path.join(root, "etc/apt/sources.list.d/satran.list"), "w") as f:
+        f.write(
+            "# SatraN — GitHub Releases apt mirror (see packaging/apt-repo.py)\n"
+            "deb [trusted=yes] https://liamlope.github.io/satran/apt stable main\n"
+        )
     os.makedirs(os.path.join(root, "DEBIAN"))
     with open(os.path.join(root, "DEBIAN/postinst"), "w") as f:
         f.write("""#!/bin/sh
@@ -117,6 +184,12 @@ apply_caps() {
   fi
 }
 for c in /opt/satran/bin/sing_box/sing-box /opt/satran/bin/xray/xray; do apply_caps "$c"; done
+# Xray resolves geosite/geoip next to the real binary (/opt/satran/bin/xray/), not bin/.
+for g in geoip.dat geosite.dat; do
+  [ -f "/opt/satran/bin/$g" ] || continue
+  ln -sfn "/opt/satran/bin/$g" "/opt/satran/bin/xray/$g"
+  ln -sfn "/opt/satran/bin/$g" "/opt/satran/bin/sing_box/$g" 2>/dev/null || true
+done
 command -v gtk-update-icon-cache >/dev/null 2>&1 && gtk-update-icon-cache -f -t /usr/share/icons/hicolor || true
 command -v update-desktop-database >/dev/null 2>&1 && update-desktop-database -q /usr/share/applications || true
 exit 0

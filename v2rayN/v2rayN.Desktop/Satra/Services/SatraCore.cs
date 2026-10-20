@@ -1,3 +1,5 @@
+using System.Net.NetworkInformation;
+
 namespace v2rayN.Desktop.Satra.Services;
 
 public enum ConnPhase { Off, Connecting, On, Disconnecting, Failed }
@@ -43,6 +45,26 @@ public class SatraCore : ReactiveObject
 
     public bool IsRouted => Cfg.SystemProxyItem.SysProxyType == ESysProxyType.ForcedChange || Cfg.TunModeItem.EnableTun || (SatraState.I.Mode == "socks" && _socksOn);
     private bool _socksOn;
+
+    /// <summary>Linux/macOS TUN iface created by sing-box (Windows uses wintun differently).</summary>
+    private static bool TunIfaceUp()
+    {
+        if (OperatingSystem.IsWindows()) return true; // core running is enough; wintun name varies
+        try
+        {
+            foreach (var name in new[] { "singbox_tun", "satra-tun" })
+            {
+                var ni = NetworkInterface.GetAllNetworkInterfaces()
+                    .FirstOrDefault(n => n.Name.Equals(name, StringComparison.OrdinalIgnoreCase));
+                // Linux TUN often reports OperationalStatus.Unknown (not Up) even when
+                // ip link shows LOWER_UP — treat anything except Down/NotPresent as live.
+                if (ni != null && ni.OperationalStatus is not (OperationalStatus.Down or OperationalStatus.NotPresent))
+                    return true;
+            }
+        }
+        catch { /* ignore */ }
+        return false;
+    }
 
     public ProfileItemModel? Active => Profiles.ProfileItems.FirstOrDefault(p => p.IndexId == Cfg.IndexId);
 
@@ -151,37 +173,61 @@ public class SatraCore : ReactiveObject
                         return;
                     }
                     Status.SystemProxySelected = (int)ESysProxyType.ForcedClear;
-                    // Set config first so StatusBar DoEnableTun early-returns (no password dialog), then reload.
-                    Cfg.TunModeItem.EnableTun = true;
-                    await ConfigHandler.SaveConfig(Cfg);
-                    if (!Status.EnableTun) Status.EnableTun = true;
-                    Status.ReloadRequested.Publish();
+                    // Bypass StatusBar toggle path entirely — never prompts for a password.
+                    if (!await Status.ApplyTunModeAsync(true))
+                    {
+                        Toast?.Invoke(L.S("vpn_denied"));
+                        Set(ConnPhase.Failed);
+                        return;
+                    }
                     break;
                 case "socks":
-                    if (Status.EnableTun) Status.EnableTun = false;
+                    if (Cfg.TunModeItem.EnableTun) await Status.ApplyTunModeAsync(false);
                     _socksOn = true;
                     Status.SystemProxySelected = (int)ESysProxyType.ForcedClear;
                     break;
                 default:
-                    if (Status.EnableTun) Status.EnableTun = false;
+                    if (Cfg.TunModeItem.EnableTun) await Status.ApplyTunModeAsync(false);
                     Status.SystemProxySelected = (int)ESysProxyType.ForcedChange;
                     break;
             }
             // Wait until the chosen mode is actually engaged (core reload is async)
             var engaged = false;
-            for (var i = 0; i < 25; i++)
+            var waitMs = SatraState.I.Mode == "tun" ? 80 : 25; // TUN start + DNS can take longer
+            for (var i = 0; i < waitMs; i++)
             {
                 await Task.Delay(200);
                 engaged = SatraState.I.Mode switch
                 {
-                    "tun" => Cfg.TunModeItem.EnableTun && CoreManager.Instance.CoreRunning,
+                    "tun" => Cfg.TunModeItem.EnableTun && CoreManager.Instance.CoreRunning && TunIfaceUp(),
                     "proxy" => Cfg.SystemProxyItem.SysProxyType == ESysProxyType.ForcedChange && CoreManager.Instance.CoreRunning,
                     _ => CoreManager.Instance.CoreRunning,
                 };
                 if (engaged) break;
             }
-            var r = engaged ? await Status.TestServerAvailability() : null;
-            if (r is { Time: > 0 } && engaged)
+            // TUN: iface+core is the contract. Google generate_204 often times out under
+            // auto_route DNS race and must not tear down a working tunnel.
+            AvailabilityCheckResult? r = null;
+            bool ok;
+            if (SatraState.I.Mode == "tun")
+            {
+                ok = engaged && TunIfaceUp() && CoreManager.Instance.CoreRunning;
+                if (ok)
+                {
+                    try
+                    {
+                        r = await Status.TestServerAvailability().WaitAsync(TimeSpan.FromSeconds(4));
+                    }
+                    catch (TimeoutException) { /* exit IP optional */ }
+                    catch (OperationCanceledException) { /* exit IP optional */ }
+                }
+            }
+            else
+            {
+                r = engaged ? await Status.TestServerAvailability() : null;
+                ok = engaged && r is { Time: > 0 };
+            }
+            if (ok)
             {
                 SessionUp = SessionDown = 0;
                 Since = DateTime.Now;
@@ -191,7 +237,7 @@ public class SatraCore : ReactiveObject
             else
             {
                 Status.SystemProxySelected = (int)ESysProxyType.ForcedClear;
-                if (Cfg.TunModeItem.EnableTun) Status.EnableTun = false;
+                if (Cfg.TunModeItem.EnableTun) await Status.ApplyTunModeAsync(false);
                 _socksOn = false;
                 Set(ConnPhase.Failed);
             }
@@ -232,7 +278,7 @@ public class SatraCore : ReactiveObject
     {
         Set(ConnPhase.Disconnecting);
         _socksOn = false;
-        if (Cfg.TunModeItem.EnableTun) Status.EnableTun = false;
+        if (Cfg.TunModeItem.EnableTun) await Status.ApplyTunModeAsync(false);
         Status.SystemProxySelected = (int)ESysProxyType.ForcedClear;
         await Task.Delay(450);
         Since = null;

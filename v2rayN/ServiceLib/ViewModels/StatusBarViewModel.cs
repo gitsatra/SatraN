@@ -428,8 +428,43 @@ public partial class StatusBarViewModel : MyReactiveObject
         await SetListenerType((ESysProxyType)SystemProxySelected);
     }
 
+    private bool _suppressTunHandler;
+
+    /// <summary>
+    /// Set TUN without the StatusBar toggle path (no password dialog). Used by SatraCore.
+    /// On Linux, requires CAP_NET_ADMIN on packaged cores (setcap from .deb).
+    /// </summary>
+    public async Task<bool> ApplyTunModeAsync(bool enable)
+    {
+        if (enable && Utils.IsLinux() && AllowEnableTun() == false)
+        {
+            Logging.SaveLog("ApplyTunMode: CAP_NET_ADMIN missing — reinstall satran .deb");
+            return false;
+        }
+
+        _suppressTunHandler = true;
+        try
+        {
+            _config.TunModeItem.EnableTun = enable;
+            EnableTun = enable;
+        }
+        finally
+        {
+            _suppressTunHandler = false;
+        }
+
+        await ConfigHandler.SaveConfig(_config);
+        ReloadRequested.Publish();
+        return true;
+    }
+
     private async Task DoEnableTun()
     {
+        if (_suppressTunHandler)
+        {
+            return;
+        }
+
         if (_config.TunModeItem.EnableTun == EnableTun)
         {
             return;
@@ -448,15 +483,16 @@ public partial class StatusBarViewModel : MyReactiveObject
             }
             else if (Utils.IsLinux())
             {
-                // OpenVPN/Outline model: never ask for a typed root password.
-                // Caps come from the .deb (setcap) or satran-fix-caps via polkit.
+                // OpenVPN model: never ask for a typed root password in the app.
+                // Caps come from the .deb (setcap). DNS uses polkit rule (com.satran.resolved.rules).
                 _config.TunModeItem.EnableTun = false;
                 EnableTun = false;
-                NoticeManager.Instance.Enqueue(ResUI.TbSettingsLinuxSudoPasswordTip);
+                NoticeManager.Instance.Enqueue("VPN needs reinstall: sudo dpkg -i satran_*.deb");
                 return;
             }
             else
             {
+                // macOS only: one-time sudo password for the session (upstream v2rayN model).
                 var password = await PasswordInputInteraction.HandleSafe(RxVoid.Default);
                 if (password.IsNullOrEmpty())
                 {

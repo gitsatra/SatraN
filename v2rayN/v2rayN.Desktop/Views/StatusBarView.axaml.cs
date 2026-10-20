@@ -39,6 +39,13 @@ public partial class StatusBarView : ReactiveUserControl<StatusBarViewModel>
 
             ViewModel.PasswordInputInteraction.RegisterHandler(async interaction =>
             {
+                // Linux: never show sudo password UI (OpenVPN model — caps + polkit from .deb).
+                if (Utils.IsLinux())
+                {
+                    Logging.SaveLog("PasswordInput blocked on Linux (TUN uses setcap/polkit)");
+                    interaction.SetOutput(null);
+                    return;
+                }
                 var result = await PasswordInputAsync();
                 interaction.SetOutput(result);
             }).DisposeWith(disposables);

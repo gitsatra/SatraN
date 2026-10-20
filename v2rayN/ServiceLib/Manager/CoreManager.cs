@@ -214,7 +214,11 @@ public class CoreManager
     private async Task CoreStart(CoreConfigContext context)
     {
         var node = context.Node;
-        var coreType = AppManager.Instance.GetCoreType(node, node.ConfigType);
+        // Must match the binary to the context that generated config.json.
+        // Linux TUN forces RunCoreType=sing_box even when the profile's preferred
+        // core is Xray; launching GetCoreType(node) would start Xray on a
+        // sing-box config and die within the 100ms FailedToRunCore window.
+        var coreType = context.RunCoreType;
         var coreInfo = CoreInfoManager.Instance.GetCoreInfo(coreType);
 
         var displayLog = node.ConfigType != EConfigType.Custom || node.DisplayLog;
@@ -230,7 +234,7 @@ public class CoreManager
     {
         if (_processService is { HasExited: false } && preContext != null)
         {
-            var preCoreType = preContext?.Node?.CoreType ?? ECoreType.sing_box;
+            var preCoreType = preContext.RunCoreType;
             var fileName = Utils.GetBinConfigPath(Global.CorePreConfigFileName);
             var result = await CoreConfigHandler.GenerateClientConfig(preContext, fileName);
             if (result.Success)

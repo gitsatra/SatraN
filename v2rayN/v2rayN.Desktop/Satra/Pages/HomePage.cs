@@ -25,15 +25,21 @@ public class HomePage : IPage
     private readonly Border _modeChip = new();
     private string _lastServerKey = "";
     private string? _pingTargetId;
+    private readonly Border _updateBtnHost = new() { IsVisible = false };
+    private SatraAppUpdate.CheckResult? _update;
 
     public Control View => _root;
 
     public HomePage()
     {
+        var updateBtn = Ui.Btn(L.S("app_update"), Ui.Kind.Primary, () => ShowUpdateSheet(), null, 13);
+        _updateBtnHost.Child = updateBtn;
         var head = Ui.Row(Ui.Title(L.S("home")), Ui.H(8,
+            _updateBtnHost,
             Ui.IconBtn("⟳", () => _ = SatraCore.I.UpdateSubsAsync(), L.S("update_all")),
             Ui.Btn(L.S("add"), Ui.Kind.Tinted, () => _ = AddAsync(), "+")));
         _root.Children.Add(head);
+        _ = CheckUpdateAsync();
 
         _status.HorizontalAlignment = _hint.HorizontalAlignment = _timer.HorizontalAlignment = HorizontalAlignment.Center;
         _orb.Clicked += () => _ = SatraCore.I.ToggleAsync();
@@ -77,6 +83,52 @@ public class HomePage : IPage
     }
 
     private async Task AddAsync() => await SatraCore.I.AddFromClipboardAsync(await SatraShell.I.ClipboardText());
+
+    private async Task CheckUpdateAsync()
+    {
+        var r = await SatraAppUpdate.CheckAsync();
+        await Dispatcher.UIThread.InvokeAsync(() =>
+        {
+            _update = r.HasUpdate ? r : null;
+            _updateBtnHost.IsVisible = r.HasUpdate;
+        });
+    }
+
+    private void ShowUpdateSheet()
+    {
+        var u = _update;
+        if (u?.AssetUrl == null || u.AssetName == null) return;
+        var status = Ui.T(L.F("app_update_available", u.Version ?? ""), 14, FontWeight.SemiBold);
+        var barHost = new ProgressBar { Minimum = 0, Maximum = 100, Height = 8, IsVisible = false };
+        var pct = Ui.Caption("", P.Text2);
+        Action close = () => { };
+        var install = Ui.Btn(L.S("app_update_install"), Ui.Kind.Primary, async () =>
+        {
+            barHost.IsVisible = true;
+            status.Text = L.S("app_update_downloading");
+            var prog = new Progress<(long got, long? total)>(p =>
+            {
+                Dispatcher.UIThread.Post(() =>
+                {
+                    if (p.total is > 0)
+                    {
+                        barHost.Value = 100.0 * p.got / p.total.Value;
+                        pct.Text = $"{Ui.Bytes(p.got)} / {Ui.Bytes(p.total.Value)}";
+                    }
+                    else pct.Text = Ui.Bytes(p.got);
+                });
+            });
+            var (ok, path, err) = await SatraAppUpdate.DownloadAsync(u.AssetUrl, u.AssetName, prog);
+            if (!ok || path == null)
+            {
+                status.Text = err ?? "download failed";
+                return;
+            }
+            await SatraAppUpdate.InstallAsync(path);
+            close();
+        });
+        close = SatraShell.I.Sheet(L.S("app_update"), Ui.V(12, status, barHost, pct, install), 420);
+    }
 
     private void UpdateSpeed()
     {

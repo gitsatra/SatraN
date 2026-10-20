@@ -34,6 +34,15 @@ public class CoreConfigContextBuilder
     public static async Task<CoreConfigContextBuilderResult> Build(Config config, ProfileItem node)
     {
         var runCoreType = AppManager.Instance.GetCoreType(node, node.ConfigType);
+        // TUN on Linux (file capabilities): LegacyProtect is Xray+sing-box with process_path
+        // bypass rules. Those rules need CAP_SYS_PTRACE which we intentionally do not ship
+        // (OpenVPN/Outline model = setcap NET_ADMIN only). Use sing-box end-to-end for TUN.
+        if (config.TunModeItem.EnableTun
+            && runCoreType is not (ECoreType.sing_box or ECoreType.mihomo)
+            && (Utils.IsLinux() || !config.TunModeItem.EnableLegacyProtect))
+        {
+            runCoreType = ECoreType.sing_box;
+        }
         var coreType = runCoreType == ECoreType.sing_box ? ECoreType.sing_box : ECoreType.Xray;
         var context = new CoreConfigContext
         {
