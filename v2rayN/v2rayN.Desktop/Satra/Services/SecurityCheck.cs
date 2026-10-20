@@ -5,7 +5,7 @@ using System.Text.Json.Nodes;
 
 namespace v2rayN.Desktop.Satra.Services;
 
-public enum CheckState { Pending, Pass, Warn, Fail, Unknown }
+public enum CheckState { Pending, Running, Pass, Warn, Fail, Unknown }
 
 public class CheckResult
 {
@@ -53,12 +53,14 @@ public static class SecurityCheck
     public static async Task<int> RunAsync(List<CheckResult> res, Action update)
     {
         res.Clear();
-        foreach (var k in Keys) res.Add(new CheckResult { Key = k });
+        foreach (var k in Keys) res.Add(new CheckResult { Key = k, Detail = L.S("sc_checking") });
         update();
         CheckResult R(string k) => res.First(r => r.Key == k);
+        void Start(string k) { var r = R(k); r.State = CheckState.Running; r.Detail = L.S("sc_checking"); update(); }
         var connected = SatraCore.I.Phase == ConnPhase.On;
         var tun = AppManager.Instance.Config.TunModeItem.EnableTun;
 
+        Start("sc_ip");
         var directT = DirectLookupAsync();
         var exitT = connected ? ExitProbe.LookupAsync(AppManager.Instance.GetLocalPort(EInboundProtocol.socks)) : Task.FromResult<(string ip, string cc)?>(null);
         await Task.WhenAll(directT, exitT);
@@ -72,23 +74,24 @@ public static class SecurityCheck
         else if (direct is { } d && d.ip == e.ip && !tun) { ipR.State = CheckState.Fail; ipR.Detail = L.F("sc_ip_same", Ui.Ltr(e.ip)); }
         else { ipR.State = CheckState.Pass; ipR.Detail = $"{NetBadges.Flag(e.cc)} {Ui.Ltr(Mask(e.ip))}"; }
         update();
+        await Task.Delay(180);
 
         // 2. DNS leak
+        Start("sc_dns");
         var dnsR = R("sc_dns");
         if (!connected) { dnsR.State = CheckState.Unknown; dnsR.Detail = L.S("sc_not_connected"); }
         else
         {
             try
             {
-                using var c = Client(true, 15);
+                using var c = Client(true, 12);
                 var id = (await c.GetStringAsync("https://bash.ws/id")).Trim();
-                // lookups the way apps make them: through the VPN (remote DNS) and via the system resolver
                 var pings = Enumerable.Range(1, 6).Select(async i =>
                 {
                     try { if (i % 2 == 0) await Dns.GetHostAddressesAsync($"{i}.{id}.bash.ws"); else await c.GetAsync($"http://{i}.{id}.bash.ws"); } catch { }
                 });
                 await Task.WhenAll(pings);
-                await Task.Delay(1500);
+                await Task.Delay(450);
                 var arr = JsonNode.Parse(await c.GetStringAsync($"https://bash.ws/dnsleak/test/{id}?json"))!.AsArray();
                 var servers = arr.Where(x => x?["type"]?.ToString() == "dns").ToList();
                 var home = direct?.cc;
@@ -104,24 +107,30 @@ public static class SecurityCheck
             catch { dnsR.State = CheckState.Unknown; dnsR.Detail = L.S("sc_unknown"); }
         }
         update();
+        await Task.Delay(160);
 
-        // 3. WebRTC / UDP leak: a real STUN request from this computer, outside any proxy settings
+        // 3. WebRTC / UDP leak
+        Start("sc_webrtc");
         var rtcR = R("sc_webrtc");
         var mapped = await StunAsync();
         if (mapped == null) { rtcR.State = tun ? CheckState.Pass : CheckState.Unknown; rtcR.Detail = L.S(tun ? "sc_rtc_blocked" : "sc_unknown"); }
         else if (direct is { } d2 && mapped == d2.ip && (exit == null || exit.Value.ip != mapped)) { rtcR.State = connected ? CheckState.Warn : CheckState.Fail; rtcR.Detail = L.S("sc_rtc_leak"); }
         else { rtcR.State = CheckState.Pass; rtcR.Detail = L.S("sc_rtc_ok"); }
         update();
+        await Task.Delay(160);
 
         // 4. IPv6
+        Start("sc_ipv6");
         var v6R = R("sc_ipv6");
         string? v6 = null;
         try { using var c = Client(false, 6); v6 = (await c.GetStringAsync("https://api6.ipify.org")).Trim(); } catch { }
         if (v6 is { Length: > 0 } && v6.Contains(':') && (exit == null || exit.Value.ip != v6)) { v6R.State = CheckState.Warn; v6R.Detail = L.S("sc_v6_leak"); }
         else { v6R.State = CheckState.Pass; v6R.Detail = L.S("sc_v6_ok"); }
         update();
+        await Task.Delay(120);
 
-        // 5. transport encryption of the active config
+        // 5. transport encryption
+        Start("sc_tls");
         var tlsR = R("sc_tls");
         var a = SatraCore.I.Active;
         var prof = a == null ? null : await AppManager.Instance.GetProfileItem(a.IndexId);
@@ -136,8 +145,10 @@ public static class SecurityCheck
             else { tlsR.State = CheckState.Warn; tlsR.Detail = L.S("sc_no_tls"); }
         }
         update();
+        await Task.Delay(120);
 
-        // 7. core
+        // 6. core
+        Start("sc_core");
         var coreR = R("sc_core");
         var cur = await CoreVersionAsync();
         string? latest = null;

@@ -67,12 +67,27 @@ public class SubsPage : IPage
         var enabled = Ui.Switch(s.Enabled, async v => { s.Enabled = v; await ConfigHandler.AddSubItem(AppManager.Instance.Config, s); SatraCore.I.Notify(L.S("reconnect_note")); });
         kids.Add(Ui.Row(Ui.V(2, Ui.T(title, 18, FontWeight.Bold), Ui.Caption(SatraState.I.Hub.ContainsKey(s.Id) ? "Satra Hub · " + L.S("hub_registered") : HostOf(s.Url), P.Text3)), enabled));
 
-        if (m != null)
+        if (m != null && (m.Total > 0 || m.Expire > 0 || m.Up + m.Down > 0))
         {
+            var used = Math.Max(0, m.Up + m.Down);
             var (frac, data, time) = SubInfo.Describe(m);
             var col = P.Level(frac);
-            kids.Add(Ui.Bar(frac, col, 8));
-            kids.Add(Ui.Row(DataLine(m), Ui.Pill(time, col, P.Lerp(P.Surface, col, 0.16))));
+            if (m.Total > 0)
+            {
+                kids.Add(Ui.Bar(frac, col, 8));
+                var left = Math.Max(0, m.Total - used);
+                kids.Add(Ui.Row(
+                    Ui.V(3,
+                        Ui.T(L.F("quota_left", Ui.Bytes(left), Ui.Bytes(m.Total)), 15, FontWeight.SemiBold, col, TextWrapping.Wrap),
+                        Ui.Caption($"{Ui.Bytes(used)} {L.S("used")}", P.Text3)),
+                    Ui.Pill(time, col, P.Lerp(P.Surface, col, 0.16))));
+            }
+            else
+            {
+                kids.Add(Ui.Row(
+                    Ui.T(data, 14, FontWeight.SemiBold, P.Text2, TextWrapping.Wrap),
+                    Ui.Pill(time, col, P.Lerp(P.Surface, col, 0.16))));
+            }
             if (!string.IsNullOrWhiteSpace(m.Announce))
                 kids.Add(new Border { Background = P.B(P.InfoSoft), CornerRadius = Ui.RCtl, Padding = new Thickness(12, 8), Child = Ui.H(10, Icons.Make("📣", 15, P.Info), Ui.T(m.Announce, 13, FontWeight.Normal, P.Text, TextWrapping.Wrap)) });
         }

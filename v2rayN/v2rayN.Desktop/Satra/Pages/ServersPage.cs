@@ -3,7 +3,7 @@ using v2rayN.Desktop.Satra.Services;
 
 namespace v2rayN.Desktop.Satra.Pages;
 
-/// <summary>Servers: group chips, search, smart connect, ping/speed for all or one, flags + tunnel/CDN badges, favorites.</summary>
+/// <summary>Servers list: structure rebuilds only when membership/order changes; ping/speed update in place.</summary>
 public class ServersPage : IPage
 {
     private readonly Grid _root = new() { Margin = new Thickness(36, 28, 36, 0), RowDefinitions = new RowDefinitions("Auto,Auto,Auto,*") };
@@ -12,7 +12,9 @@ public class ServersPage : IPage
     private readonly TextBox _search = Ui.Input(L.S("search"));
     private readonly Dictionary<string, string?> _cdn = [];
     private readonly Dictionary<string, string?> _entry = [];
-    private bool _favOnly, _sortBest;
+    private readonly Dictionary<string, ContentControl> _pingHosts = [];
+    private readonly Dictionary<string, ContentControl> _speedHosts = [];
+    private bool _favOnly, _sortBest, _pinging;
     private string _sig = "";
 
     public Control View => _root;
@@ -20,7 +22,7 @@ public class ServersPage : IPage
     public ServersPage()
     {
         _root.Children.Add(Ui.Row(Ui.Title(L.S("servers")), Ui.H(8,
-            Ui.Btn(L.S("ping_all"), Ui.Kind.Ghost, () => _ = SatraCore.I.RunTestAsync(ESpeedActionType.Realping), "◎", 13),
+            Ui.Btn(L.S("ping_all"), Ui.Kind.Ghost, () => _ = PingAllAsync(), "◎", 13),
             Ui.Btn(L.S("speed_all"), Ui.Kind.Ghost, () => _ = SatraCore.I.RunTestAsync(ESpeedActionType.Speedtest), "↯", 13),
             Ui.Btn(L.S("add"), Ui.Kind.Tinted, () => _ = AddAsync(), "+", 13))));
 
@@ -45,6 +47,7 @@ public class ServersPage : IPage
         _root.Children.Add(sv);
 
         SatraCore.I.Profiles.ProfileItems.CollectionChanged += (_, _) => Dispatcher.UIThread.Post(() => Rebuild(false));
+        SatraCore.I.Profiles.SpeedTestUpdated += () => Dispatcher.UIThread.Post(UpdatePingsInPlace);
     }
 
     private static Control Center(Control c)
@@ -56,6 +59,14 @@ public class ServersPage : IPage
 
     private async Task AddAsync() => await SatraCore.I.AddFromClipboardAsync(await SatraShell.I.ClipboardText());
 
+    private async Task PingAllAsync()
+    {
+        _pinging = true;
+        UpdatePingsInPlace(); // show … on empty
+        try { await SatraCore.I.RunTestAsync(ESpeedActionType.Realping); }
+        finally { _pinging = false; UpdatePingsInPlace(); }
+    }
+
     public static string SubName(string? subId)
     {
         if (string.IsNullOrEmpty(subId)) return "";
@@ -63,8 +74,9 @@ public class ServersPage : IPage
         return SatraCore.I.Profiles.SubItems.FirstOrDefault(s => s.Id == subId)?.Remarks is { } r ? Ui.CleanName(r) : "";
     }
 
-    public static Border PingPill(int delay) => delay switch
+    public static Border PingPill(int delay, bool spinning = false) => delay switch
     {
+        _ when spinning && delay == 0 => Ui.Pill("…", P.Accent, P.AccentSoft),
         > 0 and < 300 => Ui.Pill(Ui.Ltr($"{delay} ms"), P.Success, P.SuccessSoft),
         > 0 and < 800 => Ui.Pill(Ui.Ltr($"{delay} ms"), P.Warning, P.WarningSoft),
         > 0 => Ui.Pill(Ui.Ltr($"{delay} ms"), P.Danger, P.DangerSoft),
@@ -76,6 +88,20 @@ public class ServersPage : IPage
     {
         RebuildChips();
         Rebuild(false);
+        UpdatePingsInPlace();
+    }
+
+    private void UpdatePingsInPlace()
+    {
+        FlushPings();
+        foreach (var p in SatraCore.I.Profiles.ProfileItems)
+        {
+            var id = p.IndexId ?? "";
+            if (_pingHosts.TryGetValue(id, out var host))
+                host.Content = PingPill(Delay(p), _pinging && p.Delay == 0);
+            if (_speedHosts.TryGetValue(id, out var sh) && !string.IsNullOrEmpty(p.SpeedVal) && p.SpeedVal != "0")
+                sh.Content = Ui.Caption(p.SpeedVal + (decimal.TryParse(p.SpeedVal, out _) ? " MB/s" : ""), P.Text2);
+        }
     }
 
     private void RebuildChips()
@@ -94,7 +120,7 @@ public class ServersPage : IPage
         }
         foreach (var s in pv.SubItems)
         {
-            if (!string.IsNullOrEmpty(s.Id) && !s.Enabled) continue; // hide disabled subscriptions
+            if (!string.IsNullOrEmpty(s.Id) && !s.Enabled) continue;
             var name = string.IsNullOrEmpty(s.Id) ? L.S("all") : SubName(s.Id) is { Length: > 0 } n ? n : s.Remarks;
             var on = !_favOnly && pv.SelectedSub?.Id == s.Id;
             _chips.Children.Add(Chip(name, on, () => { _favOnly = false; pv.SelectedSub = s; RebuildChips(); }));
@@ -115,10 +141,16 @@ public class ServersPage : IPage
             : view.OrderByDescending(p => fav.Contains(Key(p)));
         var list = view.ToList();
         var active = AppManager.Instance.Config.IndexId;
-        var sig = string.Join(",", list.Select(p => $"{p.IndexId}:{p.Delay}:{p.SpeedVal}:{NetBadges.ExitCc(p)}:{fav.Contains(Key(p))}:{p.IndexId == active}"));
-        FlushPings();
-        if (!force && sig == _sig) return;
+        // Structure signature — delays excluded so ping does not rebuild the whole list
+        var sig = string.Join(",", list.Select(p => $"{p.IndexId}:{NetBadges.ExitCc(p)}:{fav.Contains(Key(p))}:{p.IndexId == active}")) + $"|{_sortBest}|{q}|{_favOnly}";
+        if (!force && sig == _sig)
+        {
+            UpdatePingsInPlace();
+            return;
+        }
         _sig = sig;
+        _pingHosts.Clear();
+        _speedHosts.Clear();
         _list.Children.Clear();
         if (list.Count == 0)
         {
@@ -126,16 +158,14 @@ public class ServersPage : IPage
                 Ui.Btn(L.S("add_clip"), Ui.Kind.Primary, () => _ = AddAsync())), new Thickness(20)));
             return;
         }
-        var i = 0;
         foreach (var p in list.Take(300))
-        {
-            _list.Children.Add(i < 14 ? Ui.Enter(RowFor(p, p.IndexId == active), i * 18) : RowFor(p, p.IndexId == active));
-            i++;
-        }
+            _list.Children.Add(RowFor(p, p.IndexId == active));
+        UpdatePingsInPlace();
     }
 
     private Control RowFor(ProfileItemModel p, bool isActive)
     {
+        var id = p.IndexId ?? "";
         var fav = SatraState.I.Favorites.Contains(Key(p));
         var star = Ui.IconBtn(fav ? "★" : "☆", () =>
         {
@@ -150,15 +180,17 @@ public class ServersPage : IPage
 
         var badges = new List<Control> { Ui.Pill(Proto(p), P.Text2, P.Fill, 10) };
         if (isActive) badges.Add(Ui.Pill(L.S("active"), P.Success, P.SuccessSoft, 10));
-        if (!string.IsNullOrEmpty(p.TodayDown) && p.TodayDown != "0 B") badges.Add(Ui.Pill(Ui.Ltr($"↓{p.TodayDown} ↑{p.TodayUp}"), P.Text3, Colors.Transparent, 11));
 
         var name = Ui.T(Ui.CleanName(p.Remarks ?? p.Address), 14.5, FontWeight.SemiBold);
         name.TextTrimming = TextTrimming.CharacterEllipsis;
         var left = Ui.H(12, star, flag, Ui.V(4, name, Ui.H(6, badges.ToArray())));
 
-        var right = new List<Control>();
-        if (!string.IsNullOrEmpty(p.SpeedVal) && p.SpeedVal != "0") right.Add(Ui.Caption(p.SpeedVal + (decimal.TryParse(p.SpeedVal, out _) ? " MB/s" : ""), P.Text2));
-        right.Add(PingPill(Delay(p)));
+        var pingHost = new ContentControl { Content = PingPill(Delay(p)) };
+        var speedHost = new ContentControl();
+        _pingHosts[id] = pingHost;
+        _speedHosts[id] = speedHost;
+
+        var right = new List<Control> { speedHost, pingHost };
         right.Add(Ui.IconBtn("◎", () => _ = SatraCore.I.RunTestAsync(ESpeedActionType.Realping, [p]), L.S("ping"), P.Text2, 14));
         right.Add(Ui.IconBtn("↯", () => _ = SatraCore.I.RunTestAsync(ESpeedActionType.Speedtest, [p]), L.S("speed"), P.Text2, 14));
 
@@ -188,27 +220,8 @@ public class ServersPage : IPage
         return s;
     }
 
-    private void LookupBadges(ProfileItemModel p)
-    {
-        var host = p.Address ?? "";
-        if (host.Length == 0 || _cdn.ContainsKey(host)) return;
-        _cdn[host] = null;
-        _ = Task.Run(async () =>
-        {
-            var cdn = await NetBadges.CdnAsync(host);
-            var entry = cdn == null ? await NetBadges.EntryCountryAsync(host) : null;
-            Dispatcher.UIThread.Post(() =>
-            {
-                _cdn[host] = cdn;
-                _entry[host] = entry;
-                if (cdn != null || entry != null) Rebuild(false);
-            });
-        });
-    }
-
     public static string Key(ProfileItemModel p) => $"{p.ConfigType}:{p.Address}:{p.Port}:{Ui.CleanName(p.Remarks)}";
 
-    /// Live delay when known, otherwise the last measured one from a previous session.
     public static int Delay(ProfileItemModel p)
     {
         var k = Key(p);

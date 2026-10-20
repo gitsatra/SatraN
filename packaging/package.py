@@ -93,7 +93,9 @@ set -e
 # so refresh caps on any existing user copies too.
 apply_caps() {
   c="$1"
-  [ -x "$c" ] || return 0
+  # Symlinks (app points ~/.local copy at /opt) already inherit the target's caps.
+  [ -L "$c" ] && return 0
+  [ -f "$c" ] && [ -x "$c" ] || return 0
   if command -v setcap >/dev/null 2>&1 && setcap cap_net_admin,cap_net_bind_service,cap_net_raw+ep "$c"; then
     touch "$c.caps"
   else

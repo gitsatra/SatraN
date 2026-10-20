@@ -16,6 +16,10 @@ public static class SubInfo
         return v;
     }
 
+    /// <summary>Panels may send expire as unix seconds or milliseconds (same rule as SatraNG Android).</summary>
+    public static long ExpireUnixSeconds(long expire) =>
+        expire > 10_000_000_000L ? expire / 1000L : expire;
+
     public static async Task<SubMeta?> RefreshAsync(SubItem sub)
     {
         if (string.IsNullOrWhiteSpace(sub.Url) || !sub.Url.StartsWith("http")) return null;
@@ -46,7 +50,7 @@ public static class SubInfo
                     case "upload": m.Up = n; break;
                     case "download": m.Down = n; break;
                     case "total": m.Total = n; break;
-                    case "expire": m.Expire = n; break;
+                    case "expire": m.Expire = ExpireUnixSeconds(n); break;
                 }
             }
         }
@@ -61,23 +65,35 @@ public static class SubInfo
         return m;
     }
 
-    /// <summary>Fraction of the subscription used up: the larger of traffic used and time elapsed.</summary>
+    /// <summary>Fraction used (traffic or time). Data line emphasizes remaining like Android.</summary>
     public static (double frac, string dataText, string timeText) Describe(SubMeta m)
     {
-        var used = m.Up + m.Down;
-        double fData = m.Total > 0 ? (double)used / m.Total : 0;
+        var used = Math.Max(0, m.Up + m.Down);
+        double fData = m.Total > 0 ? Math.Clamp((double)used / m.Total, 0, 1) : 0;
         double fTime = 0;
         string timeText;
         if (m.Expire > 0)
         {
+            var exp = ExpireUnixSeconds(m.Expire);
             var now = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
-            var left = m.Expire - now;
-            var span = Math.Max(1, m.Expire - Math.Min(m.FirstSeen, now));
-            fTime = 1 - (double)Math.Max(0, left) / span;
+            var left = exp - now;
+            var first = m.FirstSeen > 0 ? Math.Min(m.FirstSeen, now) : now - 30L * 86400;
+            var span = Math.Max(1, exp - first);
+            fTime = Math.Clamp(1 - (double)Math.Max(0, left) / span, 0, 1);
             timeText = left <= 0 ? L.S("expired") : L.F("days_left", Math.Ceiling(left / 86400.0));
         }
         else timeText = L.S("no_expiry");
-        var dataText = m.Total > 0 ? $"{Ui.Bytes(Math.Max(0, m.Total - used))} {L.S("remaining")} · {Ui.Bytes(used)} / {Ui.Bytes(m.Total)}" : $"{Ui.Bytes(used)} · {L.S("unlimited")}";
+
+        string dataText;
+        if (m.Total > 0)
+        {
+            var leftBytes = Math.Max(0, m.Total - used);
+            // Same wording as SatraNG Android: "{left} left of {total}"
+            dataText = L.F("quota_left", Ui.Bytes(leftBytes), Ui.Bytes(m.Total));
+        }
+        else if (used > 0) dataText = $"{Ui.Bytes(used)} {L.S("used")} · {L.S("unlimited")}";
+        else dataText = L.S("unlimited");
+
         return (Math.Max(fData, fTime), dataText, timeText);
     }
 }

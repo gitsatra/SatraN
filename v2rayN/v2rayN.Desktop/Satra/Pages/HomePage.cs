@@ -17,12 +17,14 @@ public class HomePage : IPage
     private readonly TextBlock _hint = Ui.T("", 13.5, FontWeight.Normal, P.Text2);
     private readonly TextBlock _timer = Ui.T("", 13.5, FontWeight.Medium, P.Text2);
     private readonly ContentControl _server = new();
+    private readonly ContentControl _homePing = new();
     private readonly TextBlock _down = Ui.Num(Ui.T("0 B/s", 22, FontWeight.Bold)), _up = Ui.Num(Ui.T("0 B/s", 22, FontWeight.Bold));
     private readonly TextBlock _downTot = Ui.Caption(""), _upTot = Ui.Caption("");
     private readonly TextBlock _today = Ui.Num(Ui.T("", 15, FontWeight.SemiBold));
     private readonly Sparkline _spark = new() { Height = 54 };
     private readonly Border _modeChip = new();
     private string _lastServerKey = "";
+    private string? _pingTargetId;
 
     public Control View => _root;
 
@@ -71,6 +73,7 @@ public class HomePage : IPage
 
         SatraCore.I.Speed += (_, _) => Dispatcher.UIThread.Post(UpdateSpeed);
         SatraCore.I.Ticked += () => Dispatcher.UIThread.Post(() => { var c = SatraCore.I; _timer.Text = c.Since is { } s ? (DateTime.Now - s).ToString(@"hh\:mm\:ss") : ""; });
+        SatraCore.I.Profiles.SpeedTestUpdated += () => Dispatcher.UIThread.Post(UpdateHomePing);
     }
 
     private async Task AddAsync() => await SatraCore.I.AddFromClipboardAsync(await SatraShell.I.ClipboardText());
@@ -118,13 +121,22 @@ public class HomePage : IPage
         if (rsig != _routeSig) { _routeSig = rsig; _routeHost.Content = SmartRoutingCard(); }
 
         var a = c.Active;
-        var key = $"{a?.IndexId}|{a?.Delay}|{(a != null ? NetBadges.ExitCc(a) : null)}|{SatraState.I.SmartConnect}";
+        // Rebuild card when server / connect state / smart changes — not on every ping tick
+        var key = $"{a?.IndexId}|{c.Phase}|{(a != null ? NetBadges.ExitCc(a) : null)}|{SatraState.I.SmartConnect}|{L.Lang}";
         if (key != _lastServerKey)
         {
             _lastServerKey = key;
             _server.Content = ServerCard(a);
         }
+        else UpdateHomePing();
         UpdateSpeed();
+    }
+
+    private void UpdateHomePing()
+    {
+        var a = SatraCore.I.Active;
+        if (a == null || a.IndexId != _pingTargetId) return;
+        _homePing.Content = ServersPage.PingPill(ServersPage.Delay(a));
     }
 
     private static readonly string[] Modes = ["tun", "proxy", "socks"];
@@ -182,9 +194,11 @@ public class HomePage : IPage
     {
         if (a == null)
         {
+            _pingTargetId = null;
             return Ui.Card(Ui.Row(Ui.V(4, Ui.T(L.S("no_server"), 16, FontWeight.SemiBold), Ui.Caption(L.S("add_hint"))),
                 Ui.Btn(L.S("add_clip"), Ui.Kind.Primary, () => _ = AddAsync())), new Thickness(18, 14));
         }
+        _pingTargetId = a.IndexId;
         var cc = NetBadges.ExitCc(a);
         var flag = NetBadges.FlagView(cc, 26);
         var sub = ServersPage.SubName(a.Subid);
@@ -197,7 +211,10 @@ public class HomePage : IPage
             meta.Add(Ui.Btn(Ui.Ltr(ip) + "  ⧉", Ui.Kind.Ghost, () => _ = SatraShell.I.Copy(ip), size: 11));
         var q = QuotaPill(a.Subid);
         if (q != null) meta.Add(q);
-        var right = Ui.H(10, ServersPage.PingPill(ServersPage.Delay(a)), Ui.Btn(L.S("servers"), Ui.Kind.Ghost, () => SatraShell.I.Go("servers"), size: 13));
+        _homePing.Content = ServersPage.PingPill(ServersPage.Delay(a));
+        // Ping the active config from Home (like Android) without leaving the page
+        var pingBtn = Ui.IconBtn("◎", () => _ = SatraCore.I.RunTestAsync(ESpeedActionType.Realping, [a]), L.S("ping"), P.Text2, 15);
+        var right = Ui.H(8, _homePing, pingBtn, Ui.Btn(L.S("servers"), Ui.Kind.Ghost, () => SatraShell.I.Go("servers"), size: 13));
         return Ui.Enter(Ui.Card(Ui.Row(left, right), new Thickness(18, 12)));
     }
 

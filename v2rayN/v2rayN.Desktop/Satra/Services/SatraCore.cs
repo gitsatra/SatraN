@@ -35,8 +35,7 @@ public class SatraCore : ReactiveObject
         Phase = IsRouted ? ConnPhase.On : ConnPhase.Off;
         if (Phase == ConnPhase.On) Since = DateTime.Now;
         AppEvents.DispatcherStatisticsRequested.AsObservable().ObserveOn(RxSchedulers.MainThreadScheduler).Subscribe(OnStats);
-        // Live ping/speed: each result refreshes Home + Servers (same freshness as Android)
-        Profiles.SpeedTestUpdated += () => RaiseChanged();
+        // Ping/speed rows update themselves via SpeedTestUpdated; do not RaiseChanged (that rebuilds pages).
         DispatcherTimer.Run(() => { Tick(); return true; }, TimeSpan.FromSeconds(1));
         DispatcherTimer.Run(() => { _ = AutoUpdateSubsAsync(); return true; }, TimeSpan.FromMinutes(15));
         DispatcherTimer.RunOnce(() => _ = AutoUpdateSubsAsync(true), TimeSpan.FromSeconds(4));
