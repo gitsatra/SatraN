@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE policyconfig PUBLIC
+ "-//freedesktop//DTD PolicyKit Policy Configuration 1.0//EN"
+ "http://www.freedesktop.org/standards/PolicyKit/1/policyconfig.dtd">
+<policyconfig>
+  <vendor>Satra</vendor>
+  <vendor_url>https://github.com/liamlope/satran</vendor_url>
+  <action id="com.satran.fix-caps">
+    <description>Allow SatraN to enable VPN (TUN) without a password</description>
+    <message>SatraN needs permission to create a VPN tunnel (same idea as OpenVPN: one package install, then no password each connect).</message>
+    <defaults>
+      <allow_any>no</allow_any>
+      <allow_inactive>no</allow_inactive>
+      <!-- Active seat: allow without password, like NM OpenVPN helpers -->
+      <allow_active>yes</allow_active>
+    </defaults>
+    <annotate key="org.freedesktop.policykit.exec.path">/opt/satran/bin/satran-fix-caps</annotate>
+    <annotate key="org.freedesktop.policykit.exec.allow_gui">true</annotate>
+  </action>
+</policyconfig>

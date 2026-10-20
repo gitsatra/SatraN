@@ -84,30 +84,32 @@ elif rid.startswith("linux"):
         shutil.copy2(os.path.join(icons, f"satran-{px}.png"), os.path.join(d, "satran.png"))
     os.makedirs(os.path.join(root, "usr/share/pixmaps"), exist_ok=True)
     shutil.copy2(os.path.join(icons, "satran-256.png"), os.path.join(root, "usr/share/pixmaps/satran.png"))
+    # Outline/OpenVPN-style: helper + polkit so TUN never needs a typed password after install
+    helper_src = os.path.join(os.path.dirname(__file__), "satran-fix-caps.sh")
+    policy_src = os.path.join(os.path.dirname(__file__), "com.satran.policy")
+    shutil.copy2(helper_src, os.path.join(root, "opt/satran/bin/satran-fix-caps"))
+    os.chmod(os.path.join(root, "opt/satran/bin/satran-fix-caps"), 0o755)
+    os.makedirs(os.path.join(root, "usr/share/polkit-1/actions"), exist_ok=True)
+    shutil.copy2(policy_src, os.path.join(root, "usr/share/polkit-1/actions/com.satran.policy"))
     os.makedirs(os.path.join(root, "DEBIAN"))
     with open(os.path.join(root, "DEBIAN/postinst"), "w") as f:
         f.write("""#!/bin/sh
 set -e
-# VPN mode without password prompts: let the bundled cores create the TUN device and routes.
-# The app also copies cores into ~/.local/share/SatraN/bin — those copies drop capabilities,
-# so refresh caps on any existing user copies too.
+# VPN like OpenVPN/Outline: capabilities on packaged cores; polkit helper for repair — no per-connect password.
+SETCAP=/usr/sbin/setcap
+[ -x "$SETCAP" ] || SETCAP=/sbin/setcap
+[ -x "$SETCAP" ] || SETCAP=$(command -v setcap || true)
 apply_caps() {
   c="$1"
-  # Symlinks (app points ~/.local copy at /opt) already inherit the target's caps.
   [ -L "$c" ] && return 0
   [ -f "$c" ] && [ -x "$c" ] || return 0
-  if command -v setcap >/dev/null 2>&1 && setcap cap_net_admin,cap_net_bind_service,cap_net_raw+ep "$c"; then
+  if [ -n "$SETCAP" ] && "$SETCAP" cap_net_admin,cap_net_bind_service,cap_net_raw+ep "$c"; then
     touch "$c.caps"
   else
     rm -f "$c.caps"
   fi
 }
 for c in /opt/satran/bin/sing_box/sing-box /opt/satran/bin/xray/xray; do apply_caps "$c"; done
-for home in /home/*; do
-  [ -d "$home" ] || continue
-  apply_caps "$home/.local/share/SatraN/bin/sing_box/sing-box"
-  apply_caps "$home/.local/share/SatraN/bin/xray/xray"
-done
 command -v gtk-update-icon-cache >/dev/null 2>&1 && gtk-update-icon-cache -f -t /usr/share/icons/hicolor || true
 command -v update-desktop-database >/dev/null 2>&1 && update-desktop-database -q /usr/share/applications || true
 exit 0

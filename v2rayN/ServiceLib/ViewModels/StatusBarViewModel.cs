@@ -446,6 +446,15 @@ public partial class StatusBarViewModel : MyReactiveObject
                 await AppManager.Instance.RebootAsAdmin();
                 return;
             }
+            else if (Utils.IsLinux())
+            {
+                // OpenVPN/Outline model: never ask for a typed root password.
+                // Caps come from the .deb (setcap) or satran-fix-caps via polkit.
+                _config.TunModeItem.EnableTun = false;
+                EnableTun = false;
+                NoticeManager.Instance.Enqueue(ResUI.TbSettingsLinuxSudoPasswordTip);
+                return;
+            }
             else
             {
                 var password = await PasswordInputInteraction.HandleSafe(RxVoid.Default);
@@ -469,10 +478,11 @@ public partial class StatusBarViewModel : MyReactiveObject
         }
         else if (Utils.IsLinux())
         {
-            // SatraN: live binary under ~/.local/share must actually have CAP_NET_ADMIN (copies from /opt drop caps)
+            // Capability model only (no sudo password). Packaged /opt cores or symlinks to them.
             var sb = CoreInfoManager.Instance.GetCoreExecFile(CoreInfoManager.Instance.GetCoreInfo(ECoreType.sing_box), out _);
             if (sb.IsNotEmpty() && LinuxCaps.HasNetAdmin(sb)) return true;
-            return AppManager.Instance.LinuxSudoPwd.IsNotEmpty();
+            if (LinuxCaps.HasNetAdmin("/opt/satran/bin/sing_box/sing-box")) return true;
+            return false;
         }
         else if (Utils.IsMacOS())
         {

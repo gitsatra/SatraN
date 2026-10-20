@@ -1,14 +1,18 @@
 namespace v2rayN.Desktop.Satra.Services;
 
 /// <summary>
-/// Linux VPN needs CAP_NET_ADMIN. After .deb install the packaged cores under /opt/satran keep
-/// capabilities; CoreManager symlinks the user-data copies to those so VPN works like Outline —
-/// no password prompts on every connect.
+/// Linux VPN (TUN) like OpenVPN/Outline: packaged cores under /opt keep CAP_NET_ADMIN after .deb
+/// install. User-data paths are symlinks. If caps are missing, repair once via pkexec + polkit
+/// action <c>com.satran.fix-caps</c> (no typed password for an active local session).
 /// </summary>
 public static class TunPrivilege
 {
     public static string? SingBox => CoreInfoManager.Instance.GetCoreExecFile(CoreInfoManager.Instance.GetCoreInfo(ECoreType.sing_box), out _);
     public static string? Xray => CoreInfoManager.Instance.GetCoreExecFile(CoreInfoManager.Instance.GetCoreInfo(ECoreType.Xray), out _);
+
+    private static string? FixCapsHelper =>
+        new[] { "/opt/satran/bin/satran-fix-caps", Path.Combine(Utils.GetBaseDirectory("bin"), "satran-fix-caps") }
+            .FirstOrDefault(File.Exists);
 
     public static async Task<bool> EnsureAsync()
     {
@@ -16,33 +20,30 @@ public static class TunPrivilege
         if (string.IsNullOrEmpty(sb) || !File.Exists(sb)) return false;
         if (LinuxCaps.HasNetAdmin(sb)) return true;
 
-        // Last resort: one-time pkexec only if the packaged binary also lacks caps (tarball install)
+        var helper = FixCapsHelper;
+        if (string.IsNullOrEmpty(helper))
+        {
+            Logging.SaveLog("satra tun privilege: satran-fix-caps helper missing");
+            return false;
+        }
+
         try
         {
-            var targets = new List<string>();
-            foreach (var t in new[] { sb, Xray })
+            // polkit action com.satran.fix-caps → allow_active=yes → no password prompt
+            var psi = new System.Diagnostics.ProcessStartInfo("pkexec", [helper])
             {
-                if (string.IsNullOrEmpty(t) || !File.Exists(t) || LinuxCaps.HasNetAdmin(t)) continue;
-                // Never setcap a symlink — resolve to the real file (usually under /opt/satran)
-                var real = LinuxCaps.Resolve(t).LastOrDefault() ?? t;
-                if (!targets.Contains(real)) targets.Add(real);
-            }
-            if (targets.Count == 0) return LinuxCaps.HasNetAdmin(sb);
-
-            static string Q(string p) => p.Replace("'", "'\\''");
-            var cmds = string.Join("; ", targets.Select(t =>
-                $"setcap cap_net_admin,cap_net_bind_service,cap_net_raw+ep '{Q(t)}' && touch '{Q(t)}.caps'"));
-            // Also mark the user-data paths so CoreManager sees the marker next to the symlink
-            foreach (var t in new[] { sb, Xray })
-            {
-                if (!string.IsNullOrEmpty(t)) cmds += $"; touch '{Q(t)}.caps'";
-            }
-            var setcap = File.Exists("/usr/sbin/setcap") ? "/usr/sbin/setcap"
-                : File.Exists("/sbin/setcap") ? "/sbin/setcap" : "setcap";
-            cmds = cmds.Replace("setcap ", setcap + " ");
-            var psi = new System.Diagnostics.ProcessStartInfo("pkexec", ["/bin/sh", "-c", cmds]) { UseShellExecute = false };
+                UseShellExecute = false,
+                RedirectStandardError = true,
+                RedirectStandardOutput = true,
+            };
             using var p = System.Diagnostics.Process.Start(psi)!;
             await p.WaitForExitAsync();
+            // Touch markers next to user symlinks so older checks stay happy
+            foreach (var t in new[] { sb, Xray })
+            {
+                if (string.IsNullOrEmpty(t)) continue;
+                try { File.WriteAllBytes(t + ".caps", []); } catch { }
+            }
             return p.ExitCode == 0 && LinuxCaps.HasNetAdmin(sb);
         }
         catch (Exception ex)
