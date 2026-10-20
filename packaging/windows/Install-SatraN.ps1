@@ -44,5 +44,5 @@ Set-ItemProperty $Reg UninstallString "powershell.exe -NoProfile -ExecutionPolic
 Set-ItemProperty $Reg NoModify 1
 Set-ItemProperty $Reg NoRepair 1
 
-Write-Host "Done. Launch SatraN from the Start Menu (UAC once per launch — then VPN/TUN works)."
+Write-Host "Done. Launch SatraN from the Start Menu (UAC once per launch - then VPN/TUN works)."
 Start-Process $Exe
