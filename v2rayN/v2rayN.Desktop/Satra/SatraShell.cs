@@ -150,6 +150,22 @@ public class SatraShell : Grid
         _host.Content = Ui.Enter(page.View);
     }
 
+    /// <summary>Toast with an action button (e.g. Undo).</summary>
+    public void Toast(string msg, string action, Action onAction, double secs = 5)
+    {
+        Border? t = null;
+        var btn = Ui.Btn(action, Ui.Kind.Tinted, () => { onAction(); if (t != null) _overlay.Children.Remove(t); }, size: 12.5);
+        t = new Border
+        {
+            Background = P.B(P.Raised), CornerRadius = Ui.RPill, Padding = new Thickness(18, 6, 6, 6),
+            HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Bottom, Margin = new Thickness(0, 0, 0, 28),
+            BoxShadow = BoxShadows.Parse("0 10 30 0 #66000000"), Child = Ui.H(14, Ui.T(msg, 13.5, FontWeight.Medium), btn),
+        };
+        _overlay.Children.Add(Ui.Enter(t));
+        _overlay.IsHitTestVisible = true;
+        DispatcherTimer.RunOnce(() => { t.Opacity = 0; DispatcherTimer.RunOnce(() => { _overlay.Children.Remove(t); _overlay.IsHitTestVisible = _sheets.Count > 0; }, TimeSpan.FromMilliseconds(400)); }, TimeSpan.FromSeconds(secs));
+    }
+
     public void Toast(string msg)
     {
         var t = new Border

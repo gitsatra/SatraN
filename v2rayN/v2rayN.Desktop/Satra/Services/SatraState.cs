@@ -27,6 +27,9 @@ public class SubMeta
     public string? WebPage { get; set; }
     public string? HubBase { get; set; }
     public long Fetched { get; set; }
+    /// <summary>Plain-language reason of the last failed update (null when the last update worked).</summary>
+    public string? Error { get; set; }
+    public long ErrorAt { get; set; }
 }
 
 public class ExitGeo

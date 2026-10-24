@@ -10,12 +10,122 @@ public class SubsPage : IPage
     private readonly Grid _root = new() { Margin = new Thickness(36, 28, 36, 0), RowDefinitions = new RowDefinitions("Auto,*") };
     private readonly StackPanel _list = new() { Spacing = 12, Margin = new Thickness(0, 18, 0, 28) };
     public Control View => _root;
+    private Button _allBtn = null!;
+    private readonly HashSet<string> _updating = [], _hidden = [];
+    private readonly Border _allBar = new() { Padding = new Thickness(16, 12), CornerRadius = new CornerRadius(14) };
+
+    private static Control Spinner(Color c, double size = 14)
+    {
+        var rt = new RotateTransform();
+        var tb = new TextBlock { Text = "⟳", FontSize = size, Foreground = P.B(c), RenderTransform = rt, RenderTransformOrigin = RelativePoint.Center,
+            VerticalAlignment = VerticalAlignment.Center };
+        IDisposable? t = null;
+        tb.AttachedToVisualTree += (_, _) => t = DispatcherTimer.Run(() => { rt.Angle = (rt.Angle + 12) % 360; return tb.IsVisible; }, TimeSpan.FromMilliseconds(33));
+        tb.DetachedFromVisualTree += (_, _) => t?.Dispose();
+        return tb;
+    }
+
+    private static string DisplayName(SubItem s) =>
+        Ui.CleanName(SatraState.I.Subs.TryGetValue(s.Id, out var m) && m.Title is { Length: > 0 } t ? t : s.Remarks);
+
+    private async Task UpdateOneAsync(SubItem s, bool quiet = false)
+    {
+        if (!_updating.Add(s.Id)) return;
+        _ = BuildAsync(true);
+        try { await SatraCore.I.UpdateSubsAsync(s.Id); }
+        catch (Exception ex) { Logging.SaveLog("satra sub update", ex); }
+        finally { _updating.Remove(s.Id); }
+        await BuildAsync(true);
+        if (quiet) return;
+        SatraState.I.Subs.TryGetValue(s.Id, out var m);
+        var n = SatraCore.I.Profiles.ProfileItems.Count(p => p.Subid == s.Id);
+        SatraShell.I.Toast(m?.Error is { Length: > 0 } e ? $"✕ {e}" : $"✓ {L.F("sub_updated_n", n)}");
+    }
+
+    private async Task UpdateAllAsync()
+    {
+        var subs = (await AppManager.Instance.SubItems() ?? []).Where(x => x.Enabled && !_hidden.Contains(x.Id)).ToList();
+        if (subs.Count == 0 || _updating.Count > 0) return;
+        _allBtn.IsEnabled = false;
+        _allBar.Background = P.B(P.Surface);
+        _allBar.IsVisible = true;
+        var fails = 0;
+        for (var i = 0; i < subs.Count; i++)
+        {
+            _allBar.Child = Ui.V(8, Ui.Row(Ui.H(8, Spinner(P.Accent), Ui.T(L.F("updating_n", i + 1, subs.Count), 13.5, FontWeight.SemiBold)), Ui.Caption(DisplayName(subs[i]), P.Text3)),
+                Ui.Bar((double)i / subs.Count, P.Accent, 6));
+            await UpdateOneAsync(subs[i], quiet: true);
+            if (SatraState.I.Subs.TryGetValue(subs[i].Id, out var m) && m.Error != null) fails++;
+        }
+        _allBar.Child = Ui.V(8, Ui.T(fails == 0 ? "✓ " + L.S("all_updated") : L.F("updated_with_errors", subs.Count - fails, fails), 13.5, FontWeight.SemiBold, fails == 0 ? P.Success : P.Warning), Ui.Bar(1, fails == 0 ? P.Success : P.Warning, 6));
+        _allBtn.IsEnabled = true;
+        DispatcherTimer.RunOnce(() => _allBar.IsVisible = false, TimeSpan.FromSeconds(3));
+    }
+
+    private void EditSheet(SubItem s)
+    {
+        var name = Ui.Input(L.S("name"), s.Remarks ?? "");
+        var url = Ui.Input("https://…", s.Url ?? "");
+        var ua = Ui.Input(L.S("ua_default"), s.UserAgent ?? "");
+        var hrs = Ui.Input("0", s.AutoUpdateInterval > 0 ? (s.AutoUpdateInterval / 60.0).ToString("0.#") : "0");
+        var en = s.Enabled;
+        Action close = () => { };
+        var save = Ui.Btn(L.S("save"), Ui.Kind.Primary, async () =>
+        {
+            if (string.IsNullOrWhiteSpace(url.Text) || !Uri.TryCreate(url.Text.Trim(), UriKind.Absolute, out _)) { SatraShell.I.Toast(L.S("sub_err_url")); return; }
+            s.Remarks = string.IsNullOrWhiteSpace(name.Text) ? s.Remarks : name.Text.Trim();
+            s.Url = url.Text.Trim();
+            s.UserAgent = ua.Text?.Trim() ?? "";
+            s.AutoUpdateInterval = double.TryParse(hrs.Text, out var h) && h > 0 ? (int)Math.Round(h * 60) : 0;
+            s.Enabled = en;
+            await ConfigHandler.AddSubItem(AppManager.Instance.Config, s);
+            close();
+            SatraShell.I.Toast(L.S("saved"));
+            await BuildAsync(true);
+        });
+        Control F(string label, Control c) => Ui.V(6, Ui.Caption(label, P.Text2), c);
+        close = SatraShell.I.Sheet(L.S("edit_sub"), Ui.V(14,
+            F(L.S("name"), name), F(L.S("sub_url"), url),
+            F(L.S("update_every_h"), hrs), F(L.S("user_agent"), ua),
+            Ui.Row(Ui.T(L.S("enabled"), 14, FontWeight.Medium), Ui.Switch(en, v => en = v)),
+            Ui.H(10, save, Ui.Btn(L.S("cancel"), Ui.Kind.Ghost, () => close()))), 480);
+    }
+
+    private void DeleteSheet(SubItem s)
+    {
+        Action close = () => { };
+        var n = SatraCore.I.Profiles.ProfileItems.Count(p => p.Subid == s.Id);
+        close = SatraShell.I.Sheet(L.S("delete_sub"), Ui.V(16,
+            Ui.T(L.F("delete_sub_q", DisplayName(s), n), 14, FontWeight.Normal, P.Text2, TextWrapping.Wrap),
+            Ui.H(10, Ui.Btn(L.S("delete"), Ui.Kind.Danger, () => { close(); SoftDelete(s); }), Ui.Btn(L.S("cancel"), Ui.Kind.Ghost, () => close()))), 420);
+    }
+
+    /// <summary>Hide now, really delete after 6 s unless the user taps Undo.</summary>
+    private void SoftDelete(SubItem s)
+    {
+        _hidden.Add(s.Id);
+        _ = BuildAsync(true);
+        var undone = false;
+        SatraShell.I.Toast(L.F("sub_deleted", DisplayName(s)), L.S("undo"), () => { undone = true; _hidden.Remove(s.Id); _ = BuildAsync(true); }, 6);
+        DispatcherTimer.RunOnce(async () =>
+        {
+            if (undone) return;
+            await ConfigHandler.DeleteSubItem(AppManager.Instance.Config, s.Id);
+            SatraState.I.Subs.Remove(s.Id);
+            SatraState.Save();
+            _hidden.Remove(s.Id);
+            SatraCore.I.Profiles.RefreshServersRequested.Publish();
+            await BuildAsync(true);
+        }, TimeSpan.FromSeconds(6.3));
+    }
 
     public SubsPage()
     {
         _root.Children.Add(Ui.Row(Ui.Title(L.S("subs")), Ui.H(8,
-            Ui.Btn(L.S("update_all"), Ui.Kind.Ghost, () => _ = SatraCore.I.UpdateSubsAsync(), "⟳", 13),
+            _allBtn = Ui.Btn(L.S("update_all"), Ui.Kind.Ghost, () => _ = UpdateAllAsync(), "⟳", 13),
             Ui.Btn(L.S("add"), Ui.Kind.Tinted, () => _ = AddAsync(), "+", 13))));
+        _allBar.IsVisible = false;
+        _list.Children.Add(_allBar);
         var sv = new ScrollViewer { Content = _list };
         Grid.SetRow(sv, 1);
         _root.Children.Add(sv);
@@ -41,12 +151,13 @@ public class SubsPage : IPage
 
     private async Task BuildCoreAsync(bool force)
     {
-        var subs = await AppManager.Instance.SubItems() ?? [];
+        var subs = (await AppManager.Instance.SubItems() ?? []).Where(x => !_hidden.Contains(x.Id)).ToList();
         var st = SatraState.I;
-        var sig = string.Join("|", subs.Select(s => $"{s.Id}{s.Enabled}{s.Url}{st.Hub.ContainsKey(s.Id)}{(st.Subs.TryGetValue(s.Id, out var m) ? $"{m.Up + m.Down}{m.Total}{m.Expire}{m.Title}{m.Announce}{m.RenewUrl}{m.SupportUrl}" : "")}"));
+        var sig = string.Join("|", subs.Select(s => $"{s.Id}{s.Remarks}{s.AutoUpdateInterval}{(st.Subs.TryGetValue(s.Id, out var e) ? $"{e.Fetched}{e.Error}" : "")}{s.Enabled}{s.Url}{st.Hub.ContainsKey(s.Id)}{(st.Subs.TryGetValue(s.Id, out var m) ? $"{m.Up + m.Down}{m.Total}{m.Expire}{m.Title}{m.Announce}{m.RenewUrl}{m.SupportUrl}" : "")}"));
         if (!force && sig == _sig) return;
         _sig = sig;
         _list.Children.Clear();
+        _list.Children.Add(_allBar);
         if (subs.Count == 0)
         {
             _list.Children.Add(Ui.Card(Ui.V(10, Ui.T(L.S("no_server"), 16, FontWeight.SemiBold), Ui.Caption(L.S("add_hint")),
@@ -71,7 +182,7 @@ public class SubsPage : IPage
             ? L.F("updated_ago", RelTime(m.Fetched))
             : L.S("never_updated");
         var subMeta = SatraState.I.Hub.ContainsKey(s.Id)
-            ? "Satra Hub · " + L.S("hub_registered")
+            ? $"Satra Hub · {L.F("configs_count", cfgCount)} · {updated}"
             : $"{L.F("configs_count", cfgCount)} · {updated}";
 
         var tile = new Border
@@ -86,6 +197,13 @@ public class SubsPage : IPage
             },
         };
         kids.Add(Ui.Row(Ui.H(12, tile, Ui.V(3, Ui.T(title, 17, FontWeight.Bold), Ui.Caption(subMeta, P.Text3))), enabled));
+        if (_updating.Contains(s.Id))
+            kids.Add(new Border { Background = P.B(P.AccentSoft), CornerRadius = Ui.RCtl, Padding = new Thickness(12, 8),
+                Child = Ui.H(8, Spinner(P.Accent), Ui.T(L.S("updating"), 13, FontWeight.SemiBold, P.Accent)) });
+        else if (m?.Error is { Length: > 0 } err)
+            kids.Add(new Border { Background = P.B(P.DangerSoft), CornerRadius = Ui.RCtl, Padding = new Thickness(12, 8),
+                Child = Ui.H(8, Ui.T("⚠", 14, FontWeight.Normal, P.Danger), Ui.V(2, Ui.T(L.S("update_failed"), 13, FontWeight.SemiBold, P.Danger),
+                    Ui.T($"{err} · {RelTime(m.ErrorAt)}", 12.5, FontWeight.Normal, P.Text2, TextWrapping.Wrap))) });
 
         if (m != null && (m.Total > 0 || m.Expire > 0 || m.Up + m.Down > 0))
         {
@@ -121,7 +239,11 @@ public class SubsPage : IPage
             kids.Add(Ui.Caption(HostOf(s.Url), P.Text3));
         }
 
-        var actions = new List<Control> { Ui.Btn(L.S("update"), Ui.Kind.Ghost, () => _ = SatraCore.I.UpdateSubsAsync(s.Id), "⟳", 13) };
+        var upd = Ui.Btn(L.S("update"), Ui.Kind.Ghost, () => _ = UpdateOneAsync(s), "⟳", 13);
+        upd.IsEnabled = !_updating.Contains(s.Id);
+        var actions = new List<Control> { upd,
+            Ui.Btn(L.S("edit"), Ui.Kind.Ghost, () => EditSheet(s), "✎", 13),
+            Ui.Btn(L.S("delete"), Ui.Kind.Ghost, () => DeleteSheet(s), "🗑", 13) };
         if (m?.RenewUrl is { Length: > 0 } ru) actions.Add(Ui.Btn(L.S("renew"), Ui.Kind.Primary, () => ProcUtils.ProcessStart(ru), size: 13));
         if (m?.SupportUrl is { Length: > 0 } su) actions.Add(Ui.Btn(L.S("support"), Ui.Kind.Tinted, () => ProcUtils.ProcessStart(su), size: 13));
         if (SatraState.I.Hub.ContainsKey(s.Id))

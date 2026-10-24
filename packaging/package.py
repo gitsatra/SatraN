@@ -28,6 +28,8 @@ def inject_core(dst):
             shutil.copy2(os.path.join(xray, "wintun.dll"), os.path.join(b, "sing_box", "wintun.dll"))
     for g in ("geoip.dat", "geosite.dat"):
         shutil.copy2(os.path.join(xray, g), os.path.join(b, g))
+    if os.path.isdir(os.path.join(xray, "srss")):  # bundled sing-box rule sets (offline-safe TUN)
+        shutil.copytree(os.path.join(xray, "srss"), os.path.join(b, "srss"), dirs_exist_ok=True)
 
 
 def zipdir(src, zpath, prefix):

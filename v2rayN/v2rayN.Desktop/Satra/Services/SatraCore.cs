@@ -372,6 +372,13 @@ public class SatraCore : ReactiveObject
             {
                 await SubInfo.RefreshAsync(s);
                 await HubSync.EnsureRegisteredAsync(s);
+                // fetched fine but nothing usable inside → bad format
+                if (SatraState.I.Subs.TryGetValue(s.Id, out var sm) && sm.Error == null && s.Url.StartsWith("http")
+                    && !Profiles.ProfileItems.Any(p => p.Subid == s.Id))
+                {
+                    sm.Error = L.S("sub_err_format");
+                    sm.ErrorAt = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
+                }
             }
         }
         // exit IPs are re-learned after a subscription update

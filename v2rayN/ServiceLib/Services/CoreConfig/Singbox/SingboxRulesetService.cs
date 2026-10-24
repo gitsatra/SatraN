@@ -88,6 +88,12 @@ public partial class CoreConfigSingboxService
             if (customRuleset is null)
             {
                 var pathSrs = Path.Combine(localSrss, $"{item}.srs");
+                if (!File.Exists(pathSrs))
+                {
+                    // SatraN: rule sets bundled next to the app (deb/tar install dir) — never depend on a download
+                    var bundled = Path.Combine(Utils.GetBaseDirectory("bin"), "srss", $"{item}.srs");
+                    if (File.Exists(bundled)) pathSrs = bundled;
+                }
                 if (File.Exists(pathSrs))
                 {
                     customRuleset = new()

@@ -30,7 +30,16 @@ public static class SubInfo
             Identity.AddTo(req);
             return req;
         });
-        if (res == null || !res.IsSuccessStatusCode) return null;
+        var st0 = SatraState.I;
+        if (!st0.Subs.TryGetValue(sub.Id, out var m0)) st0.Subs[sub.Id] = m0 = new SubMeta { FirstSeen = DateTimeOffset.UtcNow.ToUnixTimeSeconds() };
+        if (res == null || !res.IsSuccessStatusCode)
+        {
+            m0.Error = res != null ? HttpReason((int)res.StatusCode) : await NetReasonAsync(url);
+            m0.ErrorAt = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
+            SatraState.Save();
+            return null;
+        }
+        m0.Error = null;
         string? H(string k) => res.Headers.TryGetValues(k, out var v) ? v.FirstOrDefault() : res.Content.Headers.TryGetValues(k, out var c) ? c.FirstOrDefault() : null;
 
         var st = SatraState.I;
@@ -63,6 +72,30 @@ public static class SubInfo
         m.Fetched = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
         SatraState.Save();
         return m;
+    }
+
+    public static string HttpReason(int code) => code switch
+    {
+        401 or 403 => L.F("sub_err_403", code),
+        404 or 410 => L.F("sub_err_404", code),
+        429 => L.S("sub_err_429"),
+        >= 500 => L.F("sub_err_5xx", code),
+        _ => L.F("sub_err_http", code),
+    };
+
+    /// <summary>Distinguishes DNS failure vs. unreachable/timeout when no HTTP answer came back.</summary>
+    public static async Task<string> NetReasonAsync(string url)
+    {
+        try
+        {
+            var host = new Uri(url).Host;
+            using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(5));
+            var ips = await System.Net.Dns.GetHostAddressesAsync(host, cts.Token);
+            if (ips.Length == 0) return L.S("sub_err_dns");
+        }
+        catch (UriFormatException) { return L.S("sub_err_url"); }
+        catch { return L.S("sub_err_dns"); }
+        return L.S("sub_err_timeout");
     }
 
     /// <summary>Fraction used (traffic or time). Data line emphasizes remaining like Android.</summary>

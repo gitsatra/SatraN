@@ -23,6 +23,17 @@ public class SecurityPage : IPage
     private readonly Button _run;
     private bool _busy, _autoStarted;
     private int? _last;
+    private readonly Border _gate = new() { Padding = new Thickness(24, 28), CornerRadius = new CornerRadius(14), Margin = new Thickness(0, 0, 0, 12) };
+
+    /// <summary>Show the "Connect first" state when the VPN is not on. Returns true if gated.</summary>
+    private bool Gate()
+    {
+        var off = SatraCore.I.Phase != ConnPhase.On;
+        _gate.Background = P.B(P.Surface);
+        _gate.IsVisible = off;
+        _run.IsEnabled = !off && !_busy;
+        return off;
+    }
 
     public Control View => _root;
 
@@ -39,6 +50,23 @@ public class SecurityPage : IPage
         };
         _body.Children.Add(Ui.Card(Ui.H(22, _ring, Ui.V(6, _verdict, _progress, Ui.Caption(L.S("sc_desc")))), new Thickness(22, 18)));
         _body.Children.Add(new Border { Background = P.B(P.Surface), CornerRadius = Ui.RCard, ClipToBounds = true, Child = _rows });
+        // "Connect first" gate: the scan only makes sense through the VPN
+        var go = Ui.Btn(L.S("sc_connect"), Ui.Kind.Primary, async () =>
+        {
+            await SatraCore.I.ConnectAsync();
+            if (SatraCore.I.Phase == ConnPhase.On) await RunAsync();
+            else Gate();
+        }, "⏻", 14);
+        go.HorizontalAlignment = HorizontalAlignment.Center;
+        var gt = Ui.T(L.S("sc_need_vpn"), 18, FontWeight.SemiBold);
+        gt.HorizontalAlignment = HorizontalAlignment.Center;
+        var gc = Ui.Caption(L.S("sc_need_vpn_d"));
+        gc.HorizontalAlignment = HorizontalAlignment.Center;
+        gc.TextWrapping = TextWrapping.Wrap;
+        gc.TextAlignment = TextAlignment.Center;
+        _gate.Child = Ui.V(12, gt, gc, go);
+        _gate.IsVisible = false;
+        _body.Children.Insert(0, _gate);
         var sv = new ScrollViewer { Content = _body };
         Grid.SetRow(sv, 1);
         _root.Children.Add(sv);
@@ -49,6 +77,7 @@ public class SecurityPage : IPage
     public void Refresh()
     {
         Paint();
+        if (Gate()) { _autoStarted = false; return; }
         if (!_autoStarted && !_busy)
         {
             _autoStarted = true;
@@ -58,7 +87,7 @@ public class SecurityPage : IPage
 
     private async Task RunAsync()
     {
-        if (_busy) return;
+        if (_busy || Gate()) return;
         _busy = true;
         _run.IsEnabled = false;
         _verdict.Text = L.S("sc_running");

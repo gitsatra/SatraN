@@ -51,6 +51,7 @@ jobs:
           curl -fsSL -o sb.$ext https://github.com/SagerNet/sing-box/releases/download/v${SINGBOX_VERSION}/sing-box-${SINGBOX_VERSION}-$sb.$ext
           mkdir sb && if [ $ext = zip ]; then unzip -q sb.zip -d sb; else tar -xzf sb.tar.gz -C sb; fi
           find sb -type f \( -name 'sing-box*' -o -name 'wintun.dll' \) -exec cp {} xray/ \;
+          bash packaging/fetch-srs.sh xray/srss
       - name: Package
         run: python3 packaging/package.py ${{ matrix.rid }} pub xray ${{ steps.v.outputs.ver }} dist
       - uses: actions/upload-artifact@v4
