@@ -11,7 +11,7 @@ permissions:
   contents: read
 
 env:
-  XRAY_VERSION: v26.10.17
+  XRAY_VERSION: v26.10.21
   SINGBOX_VERSION: 1.14.3
   DOTNET_NOLOGO: true
 
