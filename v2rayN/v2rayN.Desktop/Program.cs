@@ -60,6 +60,13 @@ internal class Program
             return false;
         }
 
+        // SatraN: start disconnected. Drop any stale system proxy / TUN state left by a crash or an older version.
+        var cfg = AppManager.Instance.Config;
+        var stale = cfg.SystemProxyItem.SysProxyType == ESysProxyType.ForcedChange;
+        cfg.SystemProxyItem.SysProxyType = ESysProxyType.ForcedClear;
+        cfg.TunModeItem.EnableTun = false;
+        if (stale) { try { ServiceLib.Handler.SysProxy.SysProxyHandler.UpdateSysProxy(cfg, true).Wait(5000); } catch { } }
+
         AppManager.Instance.WindowDialog = new WindowDialog();
         return true;
     }

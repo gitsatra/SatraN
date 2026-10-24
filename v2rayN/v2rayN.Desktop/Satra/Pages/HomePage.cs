@@ -206,24 +206,20 @@ public class HomePage : IPage
             Refresh();
             if (SatraCore.I.Phase == ConnPhase.On) _ = SatraCore.I.ReconnectAsync();
         });
-        var hint = Ui.Caption(L.S("mode_hint"), P.Text3);
-        hint.TextWrapping = TextWrapping.Wrap;
-        hint.MaxWidth = 620;
-        hint.Margin = new Thickness(2, 0, 2, 0);
-        if (st.Mode != "socks") return Ui.V(6, seg, hint);
+        if (st.Mode != "socks") return seg;
         var port = AppManager.Instance.GetLocalPort(EInboundProtocol.socks);
         var http = port + 1; // mixed HTTP is LocalPort+1 (same as Android pairing)
         var addr = $"{Global.Loopback}:{port}";
         var chip = Ui.Btn(L.F("proxy_addr", addr, $"{Global.Loopback}:{http}"), Ui.Kind.Ghost, () => _ = SatraShell.I.Copy(addr), size: 12.5);
         chip.HorizontalAlignment = HorizontalAlignment.Center;
-        return Ui.V(6, seg, chip, hint);
+        return Ui.V(6, seg, chip);
     }
 
     /// Prominent smart-routing toggle: local sites direct while VPN stays on; off = full tunnel.
     private Control SmartRoutingCard()
     {
         var st = SatraState.I;
-        var region = st.Routing == "russia" ? L.S("routing_russia") : L.S("routing_iran");
+        var region = st.Routing switch { "russia" => L.S("routing_russia"), "china" => L.S("routing_china"), _ => L.S("routing_iran") };
         var title = $"{L.S("smart_routing")} ({region})";
         var note = st.SmartRouting ? L.S("smart_routing_d") : L.S("smart_routing_off_d");
         var sw = Ui.Switch(st.SmartRouting, v =>
@@ -232,7 +228,7 @@ public class HomePage : IPage
             SatraState.Save();
             if (v)
             {
-                _ = SatraCore.I.Main.ApplyRegionalPreset(st.Routing == "russia" ? EPresetType.Russia : EPresetType.Iran);
+                _ = SatraCore.I.Main.ApplyRegionalPreset(LocalRules.Preset(st.Routing));
             }
             _ = SatraCore.I.ApplyLocalLimitsAsync();
             _routeSig = "";

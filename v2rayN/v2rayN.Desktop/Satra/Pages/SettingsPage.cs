@@ -56,14 +56,14 @@ public class SettingsPage : IPage
 
         // Region for smart routing (toggle itself lives on Home — keep this findable in Settings too)
         _body.Children.Add(Ui.Section(L.S("routing")));
-        var routes = new[] { "iran", "russia" };
+        var routes = new[] { "iran", "russia", "china" };
         _body.Children.Add(Ui.Card(Ui.V(10,
             Ui.Caption(L.S("routing_region_d"), P.Text3),
-            Segmented([L.S("routing_iran"), L.S("routing_russia")], Math.Max(0, Array.IndexOf(routes, st.Routing)), i =>
+            Segmented([L.S("routing_iran"), L.S("routing_russia"), L.S("routing_china")], Math.Max(0, Array.IndexOf(routes, st.Routing)), i =>
             {
                 st.Routing = routes[i];
                 SatraState.Save();
-                if (st.SmartRouting) _ = SatraCore.I.Main.ApplyRegionalPreset(i == 0 ? EPresetType.Iran : EPresetType.Russia);
+                if (st.SmartRouting) _ = SatraCore.I.Main.ApplyRegionalPreset(LocalRules.Preset(routes[i]));
                 SatraCore.I.Notify(L.S("routing") + " · OK");
                 Refresh();
             })), new Thickness(14)));
@@ -73,7 +73,7 @@ public class SettingsPage : IPage
                 {
                     st.SmartRouting = v;
                     SatraState.Save();
-                    if (v) _ = SatraCore.I.Main.ApplyRegionalPreset(st.Routing == "russia" ? EPresetType.Russia : EPresetType.Iran);
+                    if (v) _ = SatraCore.I.Main.ApplyRegionalPreset(LocalRules.Preset(st.Routing));
                     _ = SatraCore.I.ApplyLocalLimitsAsync();
                     Refresh();
                 })),

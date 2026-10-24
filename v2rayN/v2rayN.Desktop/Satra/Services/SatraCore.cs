@@ -34,7 +34,7 @@ public class SatraCore : ReactiveObject
     {
         I = this;
         Main = main;
-        Phase = IsRouted ? ConnPhase.On : ConnPhase.Off;
+        Phase = ConnPhase.Off; // startup always clean (Program.cs cleared proxy/TUN)
         if (Phase == ConnPhase.On) Since = DateTime.Now;
         AppEvents.DispatcherStatisticsRequested.AsObservable().ObserveOn(RxSchedulers.MainThreadScheduler).Subscribe(OnStats);
         // Ping/speed rows update themselves via SpeedTestUpdated; do not RaiseChanged (that rebuilds pages).

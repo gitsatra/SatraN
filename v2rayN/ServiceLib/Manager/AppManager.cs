@@ -126,6 +126,9 @@ public sealed class AppManager
             Logging.SaveLog("AppExitAsync Begin");
 
             await SysProxyHandler.UpdateSysProxy(_config, true);
+            // SatraN: never come back "connected" on next launch – nothing is active until the user presses On
+            _config.SystemProxyItem.SysProxyType = ESysProxyType.ForcedClear;
+            _config.TunModeItem.EnableTun = false;
             AppEvents.AppExitRequested.Publish();
             await Task.Delay(50); //Wait for AppExitRequested to be processed
 
