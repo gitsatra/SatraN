@@ -60,6 +60,10 @@ public static class DevDriver
                 break;
             case "connect": await SatraCore.I.ConnectAsync(); break;
             case "disconnect": await SatraCore.I.DisconnectAsync(); break;
+            case "homeqa": File.AppendAllText(Path.Combine(dir, "homeqa.txt"), $"{DateTime.Now:HH:mm:ss.f} {arg} {HomePage.Last?.DevFacts()}\n"); break;
+            case "setmode": await SatraCore.I.SetModeAsync(arg); break;
+            case "secrun": SatraShell.I.Go("security"); await Task.Delay(400); if (SecurityPage.Last != null) await SecurityPage.Last.DevRun(); break;
+            case "state": File.AppendAllText(Path.Combine(dir, "state.txt"), $"{DateTime.Now:HH:mm:ss} {SatraCore.I.Phase} {SatraState.I.Mode} {SatraCore.I.Profiles.ProfileItems.FirstOrDefault(p => p.IndexId == AppManager.Instance.Config.IndexId)?.Remarks}\n"); break;
             case "mode": SatraState.I.Mode = arg; SatraState.Save(); SatraShell.I.Go("home"); break;
             case "speedui": SatraShell.I.Go("servers"); await Task.Delay(300); ServersPage.Last?.DevSpeed(int.Parse(arg)); break;
             case "size":

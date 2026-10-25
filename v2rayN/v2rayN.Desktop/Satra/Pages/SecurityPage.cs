@@ -37,8 +37,11 @@ public class SecurityPage : IPage
 
     public Control View => _root;
 
+    public static SecurityPage? Last;
+    public Task DevRun() => RunAsync();
     public SecurityPage()
     {
+        Last = this;
         _run = Ui.Btn(L.S("sc_run"), Ui.Kind.Primary, () => _ = RunAsync(), "⟳", 13);
         _root.Children.Add(Ui.Row(Ui.Title(L.S("security")), _run));
         _score.HorizontalAlignment = HorizontalAlignment.Center;
