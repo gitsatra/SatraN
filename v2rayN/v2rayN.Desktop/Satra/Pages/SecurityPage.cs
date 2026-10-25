@@ -74,7 +74,7 @@ public class SecurityPage : IPage
             _body.Children.Add(new Border { Background = P.B(P.Surface), CornerRadius = Ui.RCard, ClipToBounds = true, Child = list });
             if (cat == "tor") _body.Children.Add(Ui.Caption(L.S("sc_tor_note"), P.Text3));
         }
-        var sv = new ScrollViewer { Content = _body };
+        var sv = _sv = new ScrollViewer { Content = _body };
         Grid.SetRow(sv, 1);
         _root.Children.Add(sv);
         _ring.Final(null);
@@ -85,6 +85,7 @@ public class SecurityPage : IPage
 
     public static bool FocusTor;
     private Control? _torHdr;
+    private ScrollViewer? _sv;
 
     public void Refresh()
     {
@@ -93,7 +94,11 @@ public class SecurityPage : IPage
         {
             FocusTor = false;
             var h = _torHdr;
-            Avalonia.Threading.DispatcherTimer.RunOnce(() => h.BringIntoView(), TimeSpan.FromMilliseconds(320));
+            Avalonia.Threading.DispatcherTimer.RunOnce(() =>
+            {
+                if (_sv != null && h.TranslatePoint(new Point(0, 0), _body) is { } pt) _sv.Offset = new Vector(0, Math.Max(0, pt.Y - 6));
+                else h.BringIntoView();
+            }, TimeSpan.FromMilliseconds(320));
         }
     }
 
