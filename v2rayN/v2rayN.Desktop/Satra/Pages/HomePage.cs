@@ -136,7 +136,7 @@ public class HomePage : IPage
         _heroMeta.Margin = new Thickness(0, 6, 0, 0);
         var stateRow = Ui.H(10, _heroDot, _heroState);
         _heroText = Ui.V(4, stateRow, _heroSub, _heroMeta, _hint);
-        _heroText.VerticalAlignment = VerticalAlignment.Center;
+        _heroText.VerticalAlignment = VerticalAlignment.Center; _heroText.HorizontalAlignment = HorizontalAlignment.Left;
         _secBtn = SecurityButton();
         var ctl = Ui.H(14, _secBtn, _power);
         ctl.VerticalAlignment = VerticalAlignment.Center;
