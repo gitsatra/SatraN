@@ -17,12 +17,13 @@ public class UsagePage : IPage
     private readonly StackPanel _live = new() { Spacing = 0 };
     private readonly StackPanel _top = new() { Spacing = 0 };
     private TextBox _search = null!;
-    private char _topKind = 'a';
+    private char _topKind = 'c';
     private int _topDays = 7;
 
     private void BuildTop()
     {
         _top.Children.Clear();
+        if (_topKind == 'c') { BuildConfigs(); return; }
         var rows = UsageHistory.Top(_topKind, _topDays, _search.Text);
         if (rows.Count == 0)
         {
@@ -45,6 +46,35 @@ public class UsagePage : IPage
                 Ui.Bar((double)bytes / max, blocked ? P.Danger : P.Accent, 4)) });
         }
     }
+    /// Usage per config/server (all modes), saved per day; names resolved from the current profile list.
+    private void BuildConfigs()
+    {
+        var per = UsageHistory.PerConfig(_topDays);
+        var profiles = SatraCore.I.Profiles.ProfileItems.ToDictionary(p => p.IndexId ?? "", p => p);
+        var q = _search.Text?.Trim() ?? "";
+        var rows = per.Select(kv => (Id: kv.Key, kv.Value.Up, kv.Value.Down, P: profiles.GetValueOrDefault(kv.Key)))
+            .Select(r => (r.Id, r.Up, r.Down, Name: r.P != null ? Ui.CleanName(r.P.Remarks) : L.S("deleted_config"), Sub: r.P != null ? ServersPage.SubName(r.P.Subid) : ""))
+            .Where(r => q.Length == 0 || r.Name.Contains(q, StringComparison.OrdinalIgnoreCase) || r.Sub.Contains(q, StringComparison.OrdinalIgnoreCase))
+            .OrderByDescending(r => r.Up + r.Down).Take(60).ToList();
+        if (rows.Count == 0)
+        {
+            _top.Children.Add(new Border { Padding = new Thickness(16, 14), Child = Ui.Caption(L.S("usage_cfg_empty"), P.Text3) });
+            return;
+        }
+        var max = Math.Max(1, rows[0].Up + rows[0].Down);
+        var first = true;
+        foreach (var r in rows)
+        {
+            if (!first) _top.Children.Add(new Border { Height = 1, Background = P.B(P.Separator), Margin = new Thickness(14, 0, 0, 0) });
+            first = false;
+            var active = r.Id == SatraCore.I.Active?.IndexId;
+            _top.Children.Add(new Border { Padding = new Thickness(14, 10), Child = Ui.V(6,
+                Ui.Row(Ui.V(2, Ui.T((active ? "● " : "") + r.Name, 13.5, FontWeight.SemiBold), Ui.Caption(r.Sub, P.Text3)),
+                    Ui.V(2, Ui.T(Ui.Bytes(r.Up + r.Down), 13, FontWeight.Bold, P.Text2), Ui.Caption(Ui.Ltr($"↓ {Ui.Bytes(r.Down)}  ↑ {Ui.Bytes(r.Up)}"), P.Text3))),
+                Ui.Bar((double)(r.Up + r.Down) / max, active ? P.Success : P.Accent, 4)) });
+        }
+    }
+
     private int _days = 7;
     private readonly Border _seg7, _seg30;
     private readonly DispatcherTimer _liveTimer;
@@ -79,7 +109,7 @@ public class UsagePage : IPage
         _search = Ui.Input(L.S("search_usage"));
         _search.Width = 220;
         _search.TextChanged += (_, _) => BuildTop();
-        var kindSeg = SettingsPage.Segmented([L.S("top_apps"), L.S("top_sites")], 0, i => { _topKind = i == 0 ? 'a' : 'd'; BuildTop(); });
+        var kindSeg = SettingsPage.Segmented([L.S("top_configs"), L.S("top_apps"), L.S("top_sites")], 0, i => { _topKind = i switch { 0 => 'c', 1 => 'a', _ => 'd' }; BuildTop(); });
         var spanSeg = SettingsPage.Segmented([L.S("today"), L.S("week"), L.S("month")], 1, i => { _topDays = i switch { 0 => 1, 1 => 7, _ => 30 }; BuildTop(); });
         _body.Children.Add(Ui.Row(Ui.Section(L.S("usage_history")), _search));
         _body.Children.Add(Ui.H(10, kindSeg, spanSeg));

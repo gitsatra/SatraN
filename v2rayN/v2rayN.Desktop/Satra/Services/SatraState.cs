@@ -77,6 +77,11 @@ public class SatraState
     public List<string> Direct { get; set; } = [];
     public string Routing { get; set; } = "iran";
     public bool AutoUpdate { get; set; } = true;
+    /// <summary>App updates: 0 = notify only, 1 = auto-download and ask to restart (default).</summary>
+    public int AppUpdateMode { get; set; } = 1;
+    public bool AutoAssets { get; set; } = true;
+    public long LastAssetCheck { get; set; }
+    public long LastAppCheck { get; set; }
     public int Hardened { get; set; }
     public List<string> Favorites { get; set; } = [];
     /// Last good latency per server, keyed by address:port:id so it survives subscription refreshes.

@@ -38,6 +38,7 @@ public class SatraCore : ReactiveObject
         if (Phase == ConnPhase.On) Since = DateTime.Now;
         AppEvents.DispatcherStatisticsRequested.AsObservable().ObserveOn(RxSchedulers.MainThreadScheduler).Subscribe(OnStats);
         // Ping/speed rows update themselves via SpeedTestUpdated; do not RaiseChanged (that rebuilds pages).
+        CoreManager.StartGate = () => Phase is ConnPhase.Connecting or ConnPhase.On;
         DispatcherTimer.Run(() => { Tick(); return true; }, TimeSpan.FromSeconds(1));
         DispatcherTimer.Run(() => { _ = AutoUpdateSubsAsync(); return true; }, TimeSpan.FromMinutes(15));
         DispatcherTimer.RunOnce(() => _ = AutoUpdateSubsAsync(true), TimeSpan.FromSeconds(4));
@@ -89,6 +90,7 @@ public class SatraCore : ReactiveObject
             var d = SatraState.I.Today();
             d.Up += up;
             d.Down += down;
+            UsageHistory.AddConfig(Cfg.IndexId, up, down);
             AccountLocal(up + down);
         }
         History.Enqueue(up + down);
@@ -197,6 +199,7 @@ public class SatraCore : ReactiveObject
             for (var i = 0; i < waitMs; i++)
             {
                 await Task.Delay(200);
+                if (i == 4 && !CoreManager.Instance.CoreRunning) await Main.Reload();
                 engaged = SatraState.I.Mode switch
                 {
                     "tun" => Cfg.TunModeItem.EnableTun && CoreManager.Instance.CoreRunning && TunIfaceUp(),
@@ -239,6 +242,7 @@ public class SatraCore : ReactiveObject
                 Status.SystemProxySelected = (int)ESysProxyType.ForcedClear;
                 if (Cfg.TunModeItem.EnableTun) await Status.ApplyTunModeAsync(false);
                 _socksOn = false;
+                await CoreManager.Instance.CoreStop();
                 Set(ConnPhase.Failed);
             }
         }
@@ -281,6 +285,8 @@ public class SatraCore : ReactiveObject
         if (Cfg.TunModeItem.EnableTun) await Status.ApplyTunModeAsync(false);
         Status.SystemProxySelected = (int)ESysProxyType.ForcedClear;
         await Task.Delay(450);
+        // OFF means OFF in every mode: stop the core so no local port stays open and nothing runs in the background
+        await CoreManager.Instance.CoreStop();
         Since = null;
         Set(ConnPhase.Off);
     }
@@ -374,16 +380,27 @@ public class SatraCore : ReactiveObject
         SatraState.Save();
         Changed?.Invoke();
         // re-measure exit IPs after a subscription update (old flags stay visible until replaced)
-        var again = Profiles.ProfileItems.Where(p => subId == null || p.Subid == subId).ToList();
-        _ = Task.Run(() => ExitProbe.ProbeAsync(again));
+        // only configs with no known exit (new ones) — re-probing every server on each update wasted CPU/data
+        _ = Task.Run(() => ExitProbe.ProbeAsync());
     }
 
+    /// <summary>Per-subscription schedule: each sub's own interval, else 6 h when global auto-update is on. Only due subs are fetched.</summary>
     private async Task AutoUpdateSubsAsync(bool startup = false)
     {
         try
         {
-            if (SatraState.I.AutoUpdate && (await AppManager.Instance.SubItems())?.Count > 0) await UpdateSubsAsync();
-            else if (startup) _ = Task.Run(() => ExitProbe.ProbeAsync());
+            var now = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
+            var due = new List<SubItem>();
+            foreach (var s in await AppManager.Instance.SubItems() ?? [])
+            {
+                if (!s.Enabled) continue;
+                var mins = s.AutoUpdateInterval > 0 ? s.AutoUpdateInterval : SatraState.I.AutoUpdate ? 360 : 0;
+                if (mins <= 0) continue;
+                var last = SatraState.I.Subs.TryGetValue(s.Id, out var m) ? m.Fetched : 0;
+                if (now - last >= mins * 60L) due.Add(s);
+            }
+            foreach (var s in due) await UpdateSubsAsync(s.Id);
+            if (due.Count == 0 && startup) _ = Task.Run(() => ExitProbe.ProbeAsync());
         }
         catch (Exception ex)
         {

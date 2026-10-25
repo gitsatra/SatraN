@@ -1,3 +1,4 @@
+using Avalonia.Platform.Storage;
 using System.Text.Json.Nodes;
 using Avalonia.Layout;
 using v2rayN.Desktop.Satra.Services;
@@ -31,11 +32,11 @@ public class SubsPage : IPage
     private async Task UpdateOneAsync(SubItem s, bool quiet = false)
     {
         if (!_updating.Add(s.Id)) return;
-        _ = BuildAsync(true);
+        _ = BuildAsync();
         try { await SatraCore.I.UpdateSubsAsync(s.Id); }
         catch (Exception ex) { Logging.SaveLog("satra sub update", ex); }
         finally { _updating.Remove(s.Id); }
-        await BuildAsync(true);
+        await BuildAsync();
         if (quiet) return;
         SatraState.I.Subs.TryGetValue(s.Id, out var m);
         var n = SatraCore.I.Profiles.ProfileItems.Count(p => p.Subid == s.Id);
@@ -81,7 +82,7 @@ public class SubsPage : IPage
             await ConfigHandler.AddSubItem(AppManager.Instance.Config, s);
             close();
             SatraShell.I.Toast(L.S("saved"));
-            await BuildAsync(true);
+            await BuildAsync();
         });
         Control F(string label, Control c) => Ui.V(6, Ui.Caption(label, P.Text2), c);
         close = SatraShell.I.Sheet(L.S("edit_sub"), Ui.V(14,
@@ -104,9 +105,9 @@ public class SubsPage : IPage
     private void SoftDelete(SubItem s)
     {
         _hidden.Add(s.Id);
-        _ = BuildAsync(true);
+        _ = BuildAsync();
         var undone = false;
-        SatraShell.I.Toast(L.F("sub_deleted", DisplayName(s)), L.S("undo"), () => { undone = true; _hidden.Remove(s.Id); _ = BuildAsync(true); }, 6);
+        SatraShell.I.Toast(L.F("sub_deleted", DisplayName(s)), L.S("undo"), () => { undone = true; _hidden.Remove(s.Id); _ = BuildAsync(); }, 6);
         DispatcherTimer.RunOnce(async () =>
         {
             if (undone) return;
@@ -115,7 +116,7 @@ public class SubsPage : IPage
             SatraState.Save();
             _hidden.Remove(s.Id);
             SatraCore.I.Profiles.RefreshServersRequested.Publish();
-            await BuildAsync(true);
+            await BuildAsync();
         }, TimeSpan.FromSeconds(6.3));
     }
 
@@ -126,48 +127,175 @@ public class SubsPage : IPage
             Ui.Btn(L.S("add"), Ui.Kind.Tinted, () => _ = AddAsync(), "+", 13))));
         _allBar.IsVisible = false;
         _list.Children.Add(_allBar);
+        var search = Ui.Input(L.S("search_subs"));
+        search.MaxWidth = 360; search.HorizontalAlignment = HorizontalAlignment.Left; search.Margin = new Thickness(0, 14, 0, 0);
+        search.TextChanged += (_, _) => { _q = search.Text?.Trim() ?? ""; _ = BuildAsync(); };
+        _root.RowDefinitions = new RowDefinitions("Auto,Auto,*");
+        Grid.SetRow(search, 1);
+        _root.Children.Add(search);
         var sv = new ScrollViewer { Content = _list };
-        Grid.SetRow(sv, 1);
+        Grid.SetRow(sv, 2);
         _root.Children.Add(sv);
     }
 
+    private static bool LooksLikeImport(string? t) => t != null && t.Length < 200_000 &&
+        System.Text.RegularExpressions.Regex.IsMatch(t, @"(https?|vmess|vless|trojan|ss|hysteria2?|hy2|tuic|wireguard)://", System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+
+    /// <summary>Add: paste box (pre-filled when the clipboard holds a link), or import a QR code image.</summary>
     private async Task AddAsync()
     {
-        await SatraCore.I.AddFromClipboardAsync(await SatraShell.I.ClipboardText());
-        _ = BuildAsync(true);
+        var clip = await SatraShell.I.ClipboardText();
+        var box = Ui.Input(L.S("paste_link"), LooksLikeImport(clip) ? clip!.Trim() : "");
+        box.AcceptsReturn = true; box.Height = 96; box.TextWrapping = TextWrapping.Wrap;
+        Action close = () => { };
+        var add = Ui.Btn(L.S("add"), Ui.Kind.Primary, async () =>
+        {
+            var t = box.Text?.Trim();
+            if (!LooksLikeImport(t)) { SatraShell.I.Toast(L.S("sub_err_url")); return; }
+            close();
+            await SatraCore.I.AddFromClipboardAsync(t!);
+            _ = BuildAsync();
+        }, "+");
+        var qr = Ui.Btn("QR", Ui.Kind.Ghost, async () =>
+        {
+            var files = await SatraShell.I.Window.StorageProvider.OpenFilePickerAsync(new Avalonia.Platform.Storage.FilePickerOpenOptions
+            {
+                AllowMultiple = false,
+                FileTypeFilter = [new Avalonia.Platform.Storage.FilePickerFileType("Image") { Patterns = ["*.png", "*.jpg", "*.jpeg", "*.bmp", "*.webp"] }],
+            });
+            var path = files.FirstOrDefault()?.TryGetLocalPath();
+            var text = path == null ? null : QRCodeUtils.ParseBarcode(path);
+            if (string.IsNullOrEmpty(text)) { if (path != null) SatraShell.I.Toast("QR ✕"); return; }
+            box.Text = text;
+        }, "▦", 13);
+        close = SatraShell.I.Sheet(L.S("add_sub"), Ui.V(12, box, Ui.H(10, add, qr, Ui.Btn(L.S("cancel"), Ui.Kind.Ghost, () => close()))), 520);
     }
 
-    public void Refresh() => _ = BuildAsync();
+    private readonly ContentControl _clipBar = new();
+    private string? _clipSeen;
 
-    private string _sig = "";
-    private bool _building, _built;
+    public void Refresh()
+    {
+        _ = BuildAsync();
+        _ = CheckClipboardAsync();
+    }
+
+    /// Clipboard detection: offer a one-click add when a new subscription link was copied.
+    private async Task CheckClipboardAsync()
+    {
+        try
+        {
+            var t = (await SatraShell.I.ClipboardText())?.Trim();
+            if (t == null || t == _clipSeen || !t.StartsWith("http", StringComparison.OrdinalIgnoreCase) || t.Contains('\n') || !Uri.TryCreate(t, UriKind.Absolute, out _)) return;
+            var subs = await AppManager.Instance.SubItems() ?? [];
+            if (subs.Any(x => string.Equals(x.Url?.Trim(), t, StringComparison.OrdinalIgnoreCase))) return;
+            _clipSeen = t;
+            _clipBar.Content = Ui.Enter(Ui.Card(Ui.Row(Ui.V(2, Ui.T(L.S("clip_sub"), 13.5, FontWeight.SemiBold), Ui.Caption(HostOf(t), P.Text3)),
+                Ui.H(8, Ui.Btn(L.S("add"), Ui.Kind.Primary, async () => { _clipBar.Content = null; await SatraCore.I.AddFromClipboardAsync(t); _ = BuildAsync(); }, "+", 13),
+                    Ui.IconBtn("✕", () => _clipBar.Content = null, L.S("close"), P.Text3, 13))), new Thickness(16, 10), P.AccentSoft));
+        }
+        catch { }
+    }
+
+    private bool _building, _built, _again;
+    private readonly Dictionary<string, (ContentControl Host, string Sig)> _cards = [];
+    private readonly ContentControl _empty = new();
+    private readonly HashSet<string> _open = [];
+    private string _q = "";
 
     private async Task BuildAsync(bool force = false)
     {
-        if (_building) return;
+        if (_building) { _again = true; return; }
         _building = true;
-        try { await BuildCoreAsync(force); } finally { _building = false; }
+        try { do { _again = false; await BuildCoreAsync(force); } while (_again); } finally { _building = false; }
     }
 
+    private string CardSig(SubItem s)
+    {
+        var st = SatraState.I;
+        st.Subs.TryGetValue(s.Id, out var m);
+        var n = SatraCore.I.Profiles.ProfileItems.Count(p => p.Subid == s.Id);
+        var pings = _open.Contains(s.Id) ? string.Join(",", SatraCore.I.Profiles.ProfileItems.Where(p => p.Subid == s.Id).Select(p => PingEngine.I.Ms(p.IndexId ?? ""))) : "";
+        return $"{s.Remarks}{s.AutoUpdateInterval}{s.Enabled}{s.Url}{s.Sort}{n}{_updating.Contains(s.Id)}{_open.Contains(s.Id)}{pings}{st.Hub.ContainsKey(s.Id)}{L.Lang}"
+            + (m == null ? "" : $"{m.Fetched}{m.Error}{m.Up + m.Down}{m.Total}{m.Expire}{m.Title}{m.Announce}{m.RenewUrl}{m.SupportUrl}{m.HubBase}");
+    }
+
+    /// <summary>In-place update: keeps scroll position, only cards whose content changed are rebuilt (with a soft fade).</summary>
     private async Task BuildCoreAsync(bool force)
     {
-        var subs = (await AppManager.Instance.SubItems() ?? []).Where(x => !_hidden.Contains(x.Id)).ToList();
-        var st = SatraState.I;
-        var sig = string.Join("|", subs.Select(s => $"{s.Id}{s.Remarks}{s.AutoUpdateInterval}{(st.Subs.TryGetValue(s.Id, out var e) ? $"{e.Fetched}{e.Error}" : "")}{s.Enabled}{s.Url}{st.Hub.ContainsKey(s.Id)}{(st.Subs.TryGetValue(s.Id, out var m) ? $"{m.Up + m.Down}{m.Total}{m.Expire}{m.Title}{m.Announce}{m.RenewUrl}{m.SupportUrl}" : "")}"));
-        if (!force && sig == _sig) return;
-        _sig = sig;
-        _list.Children.Clear();
-        _list.Children.Add(_allBar);
+        var subs = (await AppManager.Instance.SubItems() ?? []).Where(x => !_hidden.Contains(x.Id)).OrderBy(x => x.Sort).ToList();
+        if (_q.Length > 0) subs = subs.Where(x => (DisplayName(x) + " " + x.Url).Contains(_q, StringComparison.OrdinalIgnoreCase)).ToList();
+        var animate = !_built;
+        _built = true;
+        var want = new List<Control> { _clipBar, _allBar };
         if (subs.Count == 0)
         {
-            _list.Children.Add(Ui.Card(Ui.V(10, Ui.T(L.S("no_server"), 16, FontWeight.SemiBold), Ui.Caption(L.S("add_hint")),
-                Ui.Btn(L.S("add_clip"), Ui.Kind.Primary, () => _ = AddAsync())), new Thickness(20)));
-            return;
+            _empty.Content ??= Ui.Card(Ui.V(10, Ui.T(_q.Length > 0 ? "—" : L.S("no_server"), 16, FontWeight.SemiBold), Ui.Caption(L.S("add_hint")),
+                Ui.Btn(L.S("add_clip"), Ui.Kind.Primary, () => _ = AddAsync())), new Thickness(20));
+            want.Add(_empty);
         }
         var i = 0;
-        var animate = force || !_built;
-        _built = true;
-        foreach (var s in subs) _list.Children.Add(animate ? Ui.Enter(Card(s), i++ * 40) : Card(s));
+        foreach (var s in subs)
+        {
+            var sig = CardSig(s);
+            if (!_cards.TryGetValue(s.Id, out var c))
+            {
+                c = (new ContentControl(), "");
+                c.Host.Transitions = [new Avalonia.Animation.DoubleTransition { Property = Visual.OpacityProperty, Duration = TimeSpan.FromMilliseconds(180) }];
+            }
+            if (force || c.Sig != sig)
+            {
+                var card = Card(s);
+                c.Host.Content = animate ? Ui.Enter(card, i * 40) : card;
+                if (c.Sig != "" && !animate) { c.Host.Opacity = 0.55; Dispatcher.UIThread.Post(() => c.Host.Opacity = 1, DispatcherPriority.Background); }
+                c.Sig = sig;
+            }
+            _cards[s.Id] = c;
+            want.Add(c.Host);
+            i++;
+        }
+        foreach (var gone in _cards.Keys.Where(k => subs.All(s => s.Id != k)).ToList()) _cards.Remove(gone);
+        // reconcile children without clearing (no flash, scroll offset kept)
+        for (var k = 0; k < want.Count; k++)
+        {
+            if (k < _list.Children.Count && ReferenceEquals(_list.Children[k], want[k])) continue;
+            var at = _list.Children.IndexOf(want[k]);
+            if (at >= 0) _list.Children.Move(at, k);
+            else _list.Children.Insert(k, want[k]);
+        }
+        while (_list.Children.Count > want.Count) _list.Children.RemoveAt(_list.Children.Count - 1);
+    }
+
+    private async Task MoveAsync(SubItem s, int dir)
+    {
+        var subs = (await AppManager.Instance.SubItems() ?? []).OrderBy(x => x.Sort).ToList();
+        var i = subs.FindIndex(x => x.Id == s.Id);
+        var j = i + dir;
+        if (i < 0 || j < 0 || j >= subs.Count) return;
+        (subs[i], subs[j]) = (subs[j], subs[i]);
+        for (var k = 0; k < subs.Count; k++) { subs[k].Sort = k + 1; await ConfigHandler.AddSubItem(AppManager.Instance.Config, subs[k]); }
+        await BuildAsync();
+    }
+
+    /// <summary>Servers of one subscription with ping + saved usage (drill-down).</summary>
+    private Control ServersOf(SubItem s)
+    {
+        var items = SatraCore.I.Profiles.ProfileItems.Where(p => p.Subid == s.Id).ToList();
+        var use = UsageHistory.PerConfig(30);
+        var rows = new StackPanel { Spacing = 0 };
+        foreach (var p in items)
+        {
+            var id = p.IndexId ?? "";
+            use.TryGetValue(id, out var u);
+            var right = Ui.H(8,
+                Ui.Caption(u.Up + u.Down > 0 ? Ui.Ltr($"↓ {Ui.Bytes(u.Down)}  ↑ {Ui.Bytes(u.Up)}") : "", P.Text3),
+                ServersPage.PingPill(ServersPage.Delay(p), PingEngine.I.Get(id).Status == PingStatus.Pending));
+            var name = Ui.T((p.IndexId == SatraCore.I.Active?.IndexId ? "● " : "") + Ui.CleanName(p.Remarks), 13, FontWeight.Medium);
+            name.TextTrimming = TextTrimming.CharacterEllipsis;
+            rows.Children.Add(new Border { Padding = new Thickness(10, 6), Child = Ui.Row(name, right) });
+        }
+        var pingAll = Ui.Btn(L.S("ping"), Ui.Kind.Ghost, () => _ = PingEngine.I.PingAllAsync(items).ContinueWith(_ => Dispatcher.UIThread.Post(() => _ = BuildAsync())), "◎", 12);
+        return new Border { Background = P.B(P.Fill), CornerRadius = Ui.RCtl, Padding = new Thickness(6), Child = Ui.V(4, rows, pingAll) };
     }
 
     private Control Card(SubItem s)
@@ -175,15 +303,13 @@ public class SubsPage : IPage
         SatraState.I.Subs.TryGetValue(s.Id, out var m);
         var title = Ui.CleanName(m?.Title is { Length: > 0 } t ? t : s.Remarks);
         var kids = new List<Control>();
-        var enabled = Ui.Switch(s.Enabled, async v => { s.Enabled = v; await ConfigHandler.AddSubItem(AppManager.Instance.Config, s); SatraCore.I.Notify(L.S("reconnect_note")); _ = BuildAsync(true); });
+        var enabled = Ui.Switch(s.Enabled, async v => { s.Enabled = v; await ConfigHandler.AddSubItem(AppManager.Instance.Config, s); SatraCore.I.Notify(L.S("reconnect_note")); _ = BuildAsync(); });
 
         var cfgCount = SatraCore.I.Profiles.ProfileItems.Count(p => p.Subid == s.Id);
         var updated = m is { Fetched: > 0 }
             ? L.F("updated_ago", RelTime(m.Fetched))
             : L.S("never_updated");
-        var subMeta = SatraState.I.Hub.ContainsKey(s.Id)
-            ? $"Satra Hub · {L.F("configs_count", cfgCount)} · {updated}"
-            : $"{L.F("configs_count", cfgCount)} · {updated}";
+        var subMeta = (SatraState.I.Hub.ContainsKey(s.Id) ? "Satra Hub · " : "") + $"{HostOf(s.Url)} · {L.F("configs_count", cfgCount)} · {updated}";
 
         var tile = new Border
         {
@@ -234,10 +360,7 @@ public class SubsPage : IPage
             if (!string.IsNullOrWhiteSpace(m.Announce))
                 kids.Add(new Border { Background = P.B(P.InfoSoft), CornerRadius = Ui.RCtl, Padding = new Thickness(12, 8), Child = Ui.H(10, Icons.Make("📣", 15, P.Info), Ui.T(m.Announce, 13, FontWeight.Normal, P.Text, TextWrapping.Wrap)) });
         }
-        else
-        {
-            kids.Add(Ui.Caption(HostOf(s.Url), P.Text3));
-        }
+
 
         var upd = Ui.Btn(L.S("update"), Ui.Kind.Ghost, () => _ = UpdateOneAsync(s), "⟳", 13);
         upd.IsEnabled = !_updating.Contains(s.Id);
@@ -253,9 +376,17 @@ public class SubsPage : IPage
         }
         else if (m?.HubBase is { Length: > 0 })
         {
-            actions.Add(Ui.Btn(L.S("hub_register"), Ui.Kind.Tinted, async () => { await HubSync.EnsureRegisteredAsync(s); _ = BuildAsync(true); }, size: 13));
+            actions.Add(Ui.Btn(L.S("hub_register"), Ui.Kind.Tinted, async () => { await HubSync.EnsureRegisteredAsync(s); _ = BuildAsync(); }, size: 13));
         }
+        actions.Add(Ui.Btn(_open.Contains(s.Id) ? "▴ " + L.S("servers") : "▾ " + L.S("servers"), Ui.Kind.Ghost, () =>
+        {
+            if (!_open.Remove(s.Id)) { _open.Add(s.Id); _ = PingEngine.I.PingAllAsync(SatraCore.I.Profiles.ProfileItems.Where(p => p.Subid == s.Id).ToList()).ContinueWith(_ => Dispatcher.UIThread.Post(() => _ = BuildAsync())); }
+            _ = BuildAsync();
+        }, null, 13));
+        actions.Add(Ui.IconBtn("↑", () => _ = MoveAsync(s, -1), L.S("move_up"), P.Text3, 13));
+        actions.Add(Ui.IconBtn("↓", () => _ = MoveAsync(s, 1), L.S("move_down"), P.Text3, 13));
         kids.Add(new WrapPanel { Children = { Ui.H(8, actions.ToArray()) } });
+        if (_open.Contains(s.Id)) kids.Add(ServersOf(s));
         return Ui.Card(Ui.V(14, kids.ToArray()), new Thickness(20, 16), s.Enabled ? null : P.Lerp(P.Surface, P.Bg, 0.5));
     }
 

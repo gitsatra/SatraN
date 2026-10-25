@@ -27,26 +27,35 @@ public class HomePage : IPage
     private string _lastServerKey = "";
     private string? _pingTargetId;
     private readonly Border _updateBtnHost = new() { IsVisible = false };
-    private SatraAppUpdate.CheckResult? _update;
 
-    public Control View => _root;
+    private ScrollViewer? _scroll;
+    /// Scrolls instead of overlapping when the window is short; the star row still centres the orb when there is room.
+    public Control View
+    {
+        get
+        {
+            if (_scroll != null) return _scroll;
+            _scroll = new ScrollViewer { Content = _root, HorizontalScrollBarVisibility = Avalonia.Controls.Primitives.ScrollBarVisibility.Disabled };
+            _scroll.SizeChanged += (_, e) => _root.MinHeight = Math.Max(0, e.NewSize.Height - _root.Margin.Top - _root.Margin.Bottom);
+            return _scroll;
+        }
+    }
 
     public HomePage()
     {
-        var updateBtn = Ui.Btn(L.S("app_update"), Ui.Kind.Primary, () => ShowUpdateSheet(), null, 13);
-        _updateBtnHost.Child = updateBtn;
         var head = Ui.Row(Ui.Title(L.S("home")), Ui.H(8,
-            _updateBtnHost,
-            Ui.Btn(L.S("speed_home"), Ui.Kind.Ghost, () => ServersPage.SpeedInline(_speedHost, [null], compact: true), "↯", 13),
+            Ui.Btn(L.S("speed_home"), Ui.Kind.Ghost, () => ServersPage.SpeedInline(_speedHost, [SatraCore.I.Active], compact: true), "↯", 13),
             Ui.IconBtn("⟳", () => _ = SatraCore.I.UpdateSubsAsync(), L.S("update_all")),
             Ui.Btn(L.S("add"), Ui.Kind.Tinted, () => _ = AddAsync(), "+")));
-        _root.Children.Add(head);
-        _ = CheckUpdateAsync();
-        new DispatcherTimer(TimeSpan.FromHours(6), DispatcherPriority.Background, (_, _) => _ = CheckUpdateAsync()).Start();
+        _root.Children.Add(Ui.V(10, head, _updateBtnHost));
+        AutoUpdater.Changed += PaintUpdate;
+        PaintUpdate();
 
         _status.HorizontalAlignment = _hint.HorizontalAlignment = _timer.HorizontalAlignment = HorizontalAlignment.Center;
         _orb.Clicked += () => _ = SatraCore.I.ToggleAsync();
+        _hint.TextWrapping = TextWrapping.Wrap; _hint.TextAlignment = TextAlignment.Center; _hint.MaxWidth = 460;
         var center = Ui.V(10, _orb, _status, _timer, _hint);
+        center.Margin = new Thickness(0, 12, 0, 18);
         center.VerticalAlignment = VerticalAlignment.Center;
         center.HorizontalAlignment = HorizontalAlignment.Center;
         Grid.SetRow(center, 1);
@@ -84,58 +93,37 @@ public class HomePage : IPage
         _root.Children.Add(_speedHost);
         _speedHost.PropertyChanged += (_, e) => { if (e.Property == ContentControl.ContentProperty) statCard.IsVisible = _routeHost.IsVisible = _speedHost.Content == null; };
 
-        SatraCore.I.Speed += (_, _) => Dispatcher.UIThread.Post(UpdateSpeed);
-        SatraCore.I.Ticked += () => Dispatcher.UIThread.Post(() => { var c = SatraCore.I; _timer.Text = c.Since is { } s ? (DateTime.Now - s).ToString(@"hh\:mm\:ss") : ""; });
+        // no UI work while the window is hidden/minimized or Home is not on screen
+        bool Shown() => _root.IsEffectivelyVisible && _root.IsAttachedToVisualTree() && SatraShell.I.Window is { IsVisible: true, WindowState: not WindowState.Minimized };
+        SatraCore.I.Speed += (_, _) => Dispatcher.UIThread.Post(() => { if (Shown()) UpdateSpeed(); });
+        _root.AttachedToVisualTree += (_, _) => UpdateSpeed();
+        SatraCore.I.Ticked += () => Dispatcher.UIThread.Post(() => { if (!Shown()) return;  { var c = SatraCore.I; _timer.Text = c.Since is { } s ? (DateTime.Now - s).ToString(@"hh\:mm\:ss") : ""; } });
         PingEngine.I.Changed += () => Dispatcher.UIThread.Post(UpdateHomePing);
     }
 
     private async Task AddAsync() => await SatraCore.I.AddFromClipboardAsync(await SatraShell.I.ClipboardText());
 
-    private async Task CheckUpdateAsync()
+    /// <summary>Update banner on Home, driven by <see cref="AutoUpdater"/> (checked on app open).</summary>
+    private void PaintUpdate()
     {
-        var r = await SatraAppUpdate.CheckAsync();
-        await Dispatcher.UIThread.InvokeAsync(() =>
+        var u = AutoUpdater.Found;
+        var st = AutoUpdater.State;
+        if (u == null || st is AutoUpdater.St.UpToDate or AutoUpdater.St.Checking or AutoUpdater.St.Idle) { _updateBtnHost.IsVisible = false; return; }
+        var ver = u.Version ?? "";
+        var (title, sub, btnText) = st switch
         {
-            _update = r.HasUpdate ? r : null;
-            _updateBtnHost.IsVisible = r.HasUpdate;
-        });
-    }
-
-    private void ShowUpdateSheet()
-    {
-        var u = _update;
-        if (u?.AssetUrl == null || u.AssetName == null) return;
-        var status = Ui.T(L.F("app_update_available", u.Version ?? ""), 14, FontWeight.SemiBold);
-        var barHost = new ProgressBar { Minimum = 0, Maximum = 100, Height = 8, IsVisible = false };
-        var pct = Ui.Caption("", P.Text2);
-        Action close = () => { };
-        var install = Ui.Btn(L.S("app_update_install"), Ui.Kind.Primary, async () =>
-        {
-            barHost.IsVisible = true;
-            status.Text = L.S("app_update_downloading");
-            var prog = new Progress<(long got, long? total)>(p =>
-            {
-                Dispatcher.UIThread.Post(() =>
-                {
-                    if (p.total is > 0)
-                    {
-                        barHost.Value = 100.0 * p.got / p.total.Value;
-                        pct.Text = $"{Ui.Bytes(p.got)} / {Ui.Bytes(p.total.Value)}";
-                    }
-                    else pct.Text = Ui.Bytes(p.got);
-                });
-            });
-            var (ok, path, err) = await SatraAppUpdate.DownloadAsync(u.AssetUrl, u.AssetName, prog, default, u.Sha256);
-            if (!ok || path == null)
-            {
-                status.Text = err ?? "download failed";
-                return;
-            }
-            status.Text = L.S("app_update_installing");
-            var ierr = await SatraAppUpdate.InstallAsync(path);
-            if (ierr != null) status.Text = ierr;
-        });
-        close = SatraShell.I.Sheet(L.S("app_update"), Ui.V(12, status, barHost, pct, install), 420);
+            AutoUpdater.St.Downloading => (L.F("app_update_available", ver), L.S("app_update_downloading") + $" {AutoUpdater.Progress * 100:0}%", (string?)null),
+            AutoUpdater.St.Ready => (L.F("upd_ready", ver), L.S(SatraAppUpdate.IsDebInstall ? "upd_ready_deb" : "upd_ready_d"), L.S("upd_restart")),
+            AutoUpdater.St.Installing => (L.S("app_update_installing"), "", null),
+            AutoUpdater.St.Error => (L.F("app_update_available", ver), AutoUpdater.Error ?? "", L.S("try_again")),
+            _ => (L.F("app_update_available", ver), L.S("upd_avail_d"), L.S("upd_install")),
+        };
+        var kids = new List<Control> { Ui.Row(Ui.H(12, Ui.T("↑", 20, FontWeight.Bold, P.Accent), Ui.V(2, Ui.T(title, 14, FontWeight.SemiBold), Ui.Caption(sub, P.Text2))),
+            btnText == null ? new Control() : Ui.Btn(btnText, Ui.Kind.Primary, () => _ = AutoUpdater.InstallAsync(), null, 13)) };
+        if (st == AutoUpdater.St.Downloading) kids.Add(Ui.Bar(AutoUpdater.Progress, P.Accent, 4));
+        _updateBtnHost.Child = Ui.Card(Ui.V(8, kids.ToArray()), new Thickness(16, 10), P.AccentSoft);
+        _updateBtnHost.MaxWidth = 640;
+        _updateBtnHost.IsVisible = true;
     }
 
     private void UpdateSpeed()
@@ -159,7 +147,9 @@ public class HomePage : IPage
         _orb.Kick();
         (_status.Text, _hint.Text, var col) = c.Phase switch
         {
+            ConnPhase.On when SatraState.I.Mode == "socks" => (L.S("proxy_running"), L.S("proxy_on_d"), P.Success),
             ConnPhase.On => (L.S("connected"), L.S("tap_disconnect"), P.Success),
+            ConnPhase.Off when SatraState.I.Mode == "socks" => (L.S("disconnected"), L.S("proxy_off_d"), P.Text),
             ConnPhase.Connecting => (L.S("connecting"), SatraState.I.SmartConnect ? L.S("smart_desc") : "", P.Accent),
             ConnPhase.Disconnecting => (L.S("disconnecting"), "", P.Text2),
             ConnPhase.Failed => (L.S("failed"), L.S("retry"), P.Danger),
@@ -218,11 +208,25 @@ public class HomePage : IPage
         });
         if (st.Mode != "socks") return seg;
         var port = AppManager.Instance.GetLocalPort(EInboundProtocol.socks);
-        var http = port + 1; // mixed HTTP is LocalPort+1 (same as Android pairing)
+        var on = SatraCore.I.Phase == ConnPhase.On;
+        Control Chip(string label, string value)
+        {
+            var b = new Border
+            {
+                Background = P.B(on ? P.SuccessSoft : P.Fill), CornerRadius = Ui.RCtl, Padding = new Thickness(12, 6), Cursor = new Cursor(StandardCursorType.Hand),
+                Child = Ui.H(8, Ui.T(label, 11, FontWeight.SemiBold, P.Text3), Ui.T(Ui.Ltr(value), 13, FontWeight.SemiBold, on ? P.Success : P.Text2), Ui.T("⧉", 13, FontWeight.Normal, P.Text3)),
+            };
+            ToolTip.SetTip(b, L.S("copied"));
+            b.PointerReleased += (_, _) => _ = SatraShell.I.Copy(value);
+            return Ui.Pressable(b);
+        }
+        // SOCKS5 and HTTP share one mixed inbound port in v2rayN/Xray
         var addr = $"{Global.Loopback}:{port}";
-        var chip = Ui.Btn(L.F("proxy_addr", addr, $"{Global.Loopback}:{http}"), Ui.Kind.Ghost, () => _ = SatraShell.I.Copy(addr), size: 12.5);
-        chip.HorizontalAlignment = HorizontalAlignment.Center;
-        return Ui.V(6, seg, chip);
+        var chips = new WrapPanel { HorizontalAlignment = HorizontalAlignment.Center, ItemSpacing = 8, LineSpacing = 6 };
+        chips.Children.Add(Chip("SOCKS5 · HTTP", addr));
+        chips.Children.Add(Chip("URL", "socks5://" + addr));
+        if (!on) chips.Children.Add(new Border { Padding = new Thickness(4, 6), Child = Ui.Caption(L.S("proxy_closed"), P.Text3) });
+        return Ui.V(8, seg, chips);
     }
 
     /// Prominent smart-routing toggle: local sites direct while VPN stays on; off = full tunnel.

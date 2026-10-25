@@ -97,6 +97,9 @@ public class CoreManager
 
     /// <param name="mainContext">Resolved main context (with pre-socks ports already merged if applicable).</param>
     /// <param name="preContext">Optional pre-socks context passed to <see cref="CoreStartPreService"/>.</param>
+    /// <summary>Satra: the main core only runs while the user has switched the connection ON (all modes).</summary>
+    public static Func<bool>? StartGate { get; set; }
+
     public async Task LoadCore(CoreConfigContext? mainContext, CoreConfigContext? preContext)
     {
         if (mainContext == null)
@@ -114,6 +117,11 @@ public class CoreManager
             return;
         }
 
+        if (StartGate?.Invoke() == false)
+        {
+            await CoreStop();
+            return;
+        }
         await UpdateFunc(false, $"{node.GetSummary()}");
         await UpdateFunc(false, $"{Utils.GetRuntimeInfo()}");
         await UpdateFunc(false, string.Format(ResUI.StartService, DateTime.Now.ToString("yyyy/MM/dd HH:mm:ss")));

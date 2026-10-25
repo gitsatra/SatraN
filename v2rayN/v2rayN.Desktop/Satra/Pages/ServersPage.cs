@@ -79,8 +79,8 @@ public class ServersPage : IPage
         if (host.Tag is CancellationTokenSource old) old.Cancel();
         var cts = new CancellationTokenSource();
         host.Tag = cts;
-        var gauge = new Controls.SpeedGauge { HorizontalAlignment = HorizontalAlignment.Center };
-        if (compact) { gauge.Width = 220; gauge.Height = 186; }
+        var gauge = new Controls.SpeedLive { HorizontalAlignment = HorizontalAlignment.Stretch };
+        if (compact) gauge.Height = 170;
         var now = Ui.T("", 15, FontWeight.SemiBold);
         now.HorizontalAlignment = HorizontalAlignment.Center;
         var step = Ui.Caption("", P.Text3);
@@ -89,7 +89,7 @@ public class ServersPage : IPage
         step.TextAlignment = TextAlignment.Center;
         var results = new StackPanel { Spacing = 6 };
         var done = new List<(ProfileItemModel? P, double Mbps, string? Err)>();
-        var btns = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8, HorizontalAlignment = HorizontalAlignment.Center };
+        var btns = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8, HorizontalAlignment = HorizontalAlignment.Right };
         void Close() { cts.Cancel(); host.Content = null; }
         Button stop = null!, retry = null!, close = null!;
         stop = Ui.Btn(L.S("stop"), Ui.Kind.Ghost, () => cts.Cancel(), size: 13);
@@ -97,14 +97,12 @@ public class ServersPage : IPage
         close = Ui.Btn(L.S("close"), Ui.Kind.Ghost, Close, size: 13);
         retry.IsVisible = false;
         btns.Children.AddRange([stop, retry, close]);
-        var left = Ui.V(compact ? 4 : 8, gauge, now, step, btns);
-        left.Width = 300;
-        var grid = new Grid { ColumnDefinitions = new ColumnDefinitions("Auto,*"), ColumnSpacing = 20 };
-        grid.Children.Add(left);
-        var sv = new ScrollViewer { Content = results, MaxHeight = 300, VerticalAlignment = VerticalAlignment.Center, IsVisible = list.Count > 1 };
-        Grid.SetColumn(sv, 1);
-        grid.Children.Add(sv);
-        host.Content = Ui.Enter(Ui.Card(Ui.V(10, Ui.Row(Ui.T(L.S("speed_test"), 15, FontWeight.SemiBold), Ui.Caption(L.S("speed_dl_only"), P.Text3)), grid), new Thickness(18, 14)));
+        now.HorizontalAlignment = HorizontalAlignment.Left; step.HorizontalAlignment = HorizontalAlignment.Left; step.TextAlignment = TextAlignment.Left;
+        var sv = new ScrollViewer { Content = results, MaxHeight = 260, IsVisible = list.Count > 1 };
+        var head = new Grid { ColumnDefinitions = new ColumnDefinitions("*,Auto") };
+        head.Children.Add(Ui.V(2, Ui.Row(Ui.T(L.S("speed_test"), 15, FontWeight.SemiBold), Ui.Caption(L.S("speed_dl_only"), P.Text3)), step));
+        Grid.SetColumn(btns, 1); head.Children.Add(btns);
+        host.Content = Ui.Enter(Ui.Card(Ui.V(12, head, gauge, sv), new Thickness(18, 14)));
 
         static string Name(ProfileItemModel? p) => p == null ? (SatraCore.I.Phase == ConnPhase.On ? L.S("speed_via_vpn") : L.S("speed_direct")) : Ui.CleanName(p.Remarks);
         void Paint()
@@ -114,7 +112,7 @@ public class ServersPage : IPage
             foreach (var (pp, v, err) in done.OrderByDescending(d => d.Mbps))
             {
                 var best = rank++ == 0 && v > 0 && done.Count > 1;
-                var bar = Ui.Bar(v > 0 ? Controls.SpeedGauge.Frac(v) : 0, v <= 0 ? P.Danger : best ? P.Success : P.Accent, 5);
+                var bar = Ui.Bar(v > 0 ? Math.Min(1, v / Math.Max(1, done.Max(d => d.Mbps))) : 0, v <= 0 ? P.Danger : best ? P.Success : P.Accent, 5);
                 var row = Ui.V(6, Ui.Row(Ui.T($"{(best ? "★ " : "")}{Name(pp)}", 13, FontWeight.SemiBold),
                     Ui.T(v > 0 ? Ui.Ltr($"{v:0.0} Mbps") : L.S("failed"), 13, FontWeight.Bold, v <= 0 ? P.Danger : best ? P.Success : P.Text)), bar);
                 if (v <= 0 && err != null) row.Children.Add(Ui.Caption(err, P.Text3));
@@ -128,7 +126,7 @@ public class ServersPage : IPage
             {
                 var p = list[i];
                 var idx = i;
-                Dispatcher.UIThread.Post(() => { now.Text = Name(p); step.Text = list.Count > 1 ? L.F("speed_n", idx + 1, list.Count) : L.S("speed_dl"); gauge.Set(0, 0); });
+                Dispatcher.UIThread.Post(() => { now.Text = Name(p); step.Text = (list.Count > 1 ? L.F("speed_n", idx + 1, list.Count) : L.S("speed_dl")) + " · " + Name(p); gauge.Reset(); gauge.Via = Name(p); });
                 SpeedEngine.Result r;
                 try { r = await SpeedEngine.RunAsync(p, (m, pr) => Dispatcher.UIThread.Post(() => gauge.Set(m, pr)), cts.Token, list.Count > 1 ? TimeSpan.FromSeconds(6) : null); }
                 catch (OperationCanceledException) { break; }
@@ -145,7 +143,7 @@ public class ServersPage : IPage
             {
                 if (cts.IsCancellationRequested && host.Content == null) return;
                 var best = done.Where(d => d.Mbps > 0).OrderByDescending(d => d.Mbps).FirstOrDefault();
-                if (best.Mbps > 0) { now.Text = (done.Count > 1 ? "★ " : "") + Name(best.P); gauge.Set(best.Mbps, 1, true); step.Text = cts.IsCancellationRequested ? L.S("stopped") : list.Count > 1 ? L.S("speed_done") : L.S("done"); }
+                if (best.Mbps > 0) { now.Text = (done.Count > 1 ? "★ " : "") + Name(best.P); if (done.Count > 1) { gauge.Reset(); gauge.Via = "★ " + Name(best.P); } gauge.Set(best.Mbps, 1, true); step.Text = cts.IsCancellationRequested ? L.S("stopped") : list.Count > 1 ? L.S("speed_done") : L.S("done"); }
                 else if (cts.IsCancellationRequested) step.Text = L.S("stopped");
                 stop.IsVisible = false; retry.IsVisible = true;
                 after?.Invoke();

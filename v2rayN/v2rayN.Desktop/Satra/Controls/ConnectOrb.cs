@@ -68,9 +68,9 @@ public class ConnectOrb : Control
         InvalidateVisual();
         // Idle: Off/Failed and settled → stop ticking (no CPU while nothing moves). Hidden window → stop.
         var settled = Math.Abs(_pressTarget - _press) < 0.001 && Math.Abs(_pressVel) < 0.01 && Math.Abs(target - _fill) < 0.002
-            && (DateTime.Now - _phaseAt).TotalSeconds > 0.8;
+            && (DateTime.Now - _phaseAt).TotalSeconds > (_phase == ConnPhase.On ? 3.5 : 0.8);
         var top = TopLevel.GetTopLevel(this);
-        if ((settled && _phase is ConnPhase.Off or ConnPhase.Failed && !_hover) || top is { IsVisible: false }) { _press = _pressTarget; _timer.Stop(); InvalidateVisual(); }
+        if ((settled && _phase is ConnPhase.Off or ConnPhase.Failed or ConnPhase.On && !_hover) || top is { IsVisible: false }) { _press = _pressTarget; _timer.Stop(); InvalidateVisual(); }
         // Connected ripples are slow; 30 fps is plenty and halves the cost.
         _timer.Interval = _phase == ConnPhase.On && settled && !_hover ? TimeSpan.FromMilliseconds(33) : TimeSpan.FromMilliseconds(16);
     }
@@ -102,7 +102,8 @@ public class ConnectOrb : Control
         var col = PhaseColor;
 
         // ripples when connected
-        if (_phase == ConnPhase.On)
+        // connected: a few ripples after connecting, then a calm static ring (no idle redraws / CPU)
+        if (_phase == ConnPhase.On && _timer.IsEnabled)
         {
             for (var i = 0; i < 3; i++)
             {
@@ -112,7 +113,7 @@ public class ConnectOrb : Control
             }
         }
         // ambient glow
-        var glowA = _phase switch { ConnPhase.On => 0.28 + 0.08 * Math.Sin(t * 2.2), ConnPhase.Connecting => 0.22, ConnPhase.Failed => 0.25, _ => 0.13 };
+        var glowA = _phase switch { ConnPhase.On => _timer.IsEnabled ? 0.28 + 0.08 * Math.Sin(t * 2.2) : 0.3, ConnPhase.Connecting => 0.22, ConnPhase.Failed => 0.25, _ => 0.13 };
         var glow = new RadialGradientBrush
         {
             GradientStops = { new GradientStop(Color.FromArgb((byte)(glowA * 255), col.R, col.G, col.B), 0), new GradientStop(Color.FromArgb(0, col.R, col.G, col.B), 1) },

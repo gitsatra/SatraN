@@ -7,7 +7,14 @@ namespace v2rayN.Desktop.Satra.Pages;
 public class SettingsPage : IPage
 {
     private readonly Grid _root = new() { Margin = new Thickness(36, 28, 36, 0), RowDefinitions = new RowDefinitions("Auto,*") };
-    private readonly StackPanel _body = new() { Spacing = 10, Margin = new Thickness(0, 18, 0, 28), MaxWidth = 760, HorizontalAlignment = HorizontalAlignment.Left };
+    private readonly StackPanel _body = new() { Spacing = 10, Margin = new Thickness(0, 0, 0, 28), MaxWidth = 760, HorizontalAlignment = HorizontalAlignment.Left };
+    private readonly StackPanel _nav = new() { Spacing = 2, Width = 200, Margin = new Thickness(0, 0, 24, 0) };
+    private string _cat = "general";
+    private static readonly (string Id, string Glyph, string Key)[] Cats =
+    [
+        ("general", "⚙", "cat_general"), ("connection", "⇄", "cat_connection"), ("sharing", "⇆", "lan_share"),
+        ("updates", "↓", "updates"), ("advanced", "⌘", "advanced"), ("about", "S", "about"),
+    ];
     public Control View => _root;
     private bool _modeChanged;
     private static Config Cfg => AppManager.Instance.Config;
@@ -15,9 +22,15 @@ public class SettingsPage : IPage
     public SettingsPage()
     {
         _root.Children.Add(Ui.Title(L.S("settings")));
+        // desktop layout: category sidebar on the left, the chosen section on the right
+        var split = new Grid { ColumnDefinitions = new ColumnDefinitions("Auto,*"), Margin = new Thickness(0, 18, 0, 0) };
+        split.Children.Add(_nav);
         var sv = new ScrollViewer { Content = _body };
-        Grid.SetRow(sv, 1);
-        _root.Children.Add(sv);
+        Grid.SetColumn(sv, 1);
+        split.Children.Add(sv);
+        Grid.SetRow(split, 1);
+        _root.Children.Add(split);
+        AutoUpdater.Changed += () => { if (_cat == "updates") Build(true); };
     }
 
     public static Control Segmented(string[] labels, int selected, Action<int> pick)
@@ -49,11 +62,43 @@ public class SettingsPage : IPage
         var st = SatraState.I;
         var ib0 = Cfg.Inbound.First();
         var lanOn0 = ib0.AllowLANConn && ib0.NewPort4LAN;
-        var sig = $"{SatraCore.I.Phase == ConnPhase.On}{st.Mode}{st.Routing}{st.SmartRouting}{st.Advanced}{L.Lang}{_modeChanged}{st.SmartConnect}{st.AutoUpdate}{lanOn0}{st.ViaVpn.Count}{st.Direct.Count}";
+        var sig = $"{_cat}{SatraState.I.AppUpdateMode}{SatraState.I.AutoAssets}{SatraCore.I.Phase == ConnPhase.On}{st.Mode}{st.Routing}{st.SmartRouting}{st.Advanced}{L.Lang}{_modeChanged}{st.SmartConnect}{st.AutoUpdate}{lanOn0}{st.ViaVpn.Count}{st.Direct.Count}";
         if (!force && sig == _sig) return;
         _sig = sig;
         _body.Children.Clear();
+        BuildNav();
+        switch (_cat)
+        {
+            case "connection": BuildConnection(); break;
+            case "sharing": BuildSharing(); break;
+            case "updates": _body.Children.Add(UpdatesView()); break;
+            case "advanced": BuildAdvanced(); break;
+            case "about": BuildAbout(); break;
+            default: BuildGeneral(); break;
+        }
+    }
 
+    private void BuildNav()
+    {
+        _nav.Children.Clear();
+        foreach (var (id, glyph, key) in Cats)
+        {
+            var on = id == _cat;
+            var badge = id == "updates" && AutoUpdater.Found != null ? Ui.Pill("1", P.Accent, P.AccentSoft, 10) : (Control)new Control();
+            var b = new Border
+            {
+                CornerRadius = Ui.RCtl, Padding = new Thickness(12, 9), Cursor = new Cursor(StandardCursorType.Hand),
+                Background = on ? P.B(P.Raised) : Brushes.Transparent,
+                Child = Ui.Row(Ui.H(10, Ui.T(glyph, 14, FontWeight.Normal, on ? P.Accent : P.Text3), Ui.T(L.S(key), 13.5, on ? FontWeight.SemiBold : FontWeight.Medium, on ? P.Text : P.Text2)), badge),
+            };
+            b.PointerReleased += (_, _) => { _cat = id; Build(true); };
+            _nav.Children.Add(Ui.Pressable(b));
+        }
+    }
+
+    private void BuildConnection()
+    {
+        var st = SatraState.I;
         // Region for smart routing (toggle itself lives on Home — keep this findable in Settings too)
         _body.Children.Add(Ui.Section(L.S("routing")));
         var routes = new[] { "iran", "russia", "china" };
@@ -80,6 +125,12 @@ public class SettingsPage : IPage
                 })),
             Ui.ListRow(L.S("kill_switch"), L.S("kill_switch_d"), Ui.Switch(st.KillSwitch, v => { st.KillSwitch = v; SatraState.Save(); }))));
 
+        _body.Children.Add(Ui.Group(
+            Ui.ListRow(L.S("smart"), L.S("smart_desc"), Ui.Switch(st.SmartConnect, v => { st.SmartConnect = v; SatraState.Save(); }), glyph: "⚡", glyphColor: P.Accent)));
+    }
+
+    private void BuildSharing()
+    {
         // Share VPN with phones/PCs on the same Wi-Fi or hotspot
         var ib = Cfg.Inbound.First();
         var lanOn = ib.AllowLANConn && ib.NewPort4LAN;
@@ -87,9 +138,12 @@ public class SettingsPage : IPage
         var lanRows = new List<Control> { Ui.ListRow(L.S("lan_share"), L.S("lan_share_d"), Ui.Switch(lanOn, v => _ = SetLanAsync(v))) };
         if (lanOn) lanRows.Add(Ui.ListRow(L.S("lan_details"), $"{LanIp()}:{AppManager.Instance.GetLocalPort(EInboundProtocol.socks3)}", null, LanSheet, "⇄"));
         _body.Children.Add(Ui.Group(lanRows.ToArray()));
+    }
 
-        // general
-        _body.Children.Add(Ui.Section(L.S("settings")));
+    private void BuildGeneral()
+    {
+        var st = SatraState.I;
+        _body.Children.Add(Ui.Section(L.S("cat_general")));
         var langs = new[] { "en", "fa", "ru" };
         var lang = Segmented(["English", "فارسی", "Русский"], Math.Max(0, Array.IndexOf(langs, L.Lang)), i =>
         {
@@ -118,14 +172,47 @@ public class SettingsPage : IPage
         _body.Children.Add(Ui.Group(
             Ui.ListRow(L.S("language"), null, lang, glyph: "文"),
             Ui.ListRow(L.S("this_device"), "Satra Hub", devName, glyph: "▢"),
-            Ui.ListRow(L.S("smart"), L.S("smart_desc"), Ui.Switch(st.SmartConnect, v => { st.SmartConnect = v; SatraState.Save(); }), glyph: "⚡", glyphColor: P.Accent),
-            Ui.ListRow(L.S("auto_update"), "15 min", Ui.Switch(st.AutoUpdate, v => { st.AutoUpdate = v; SatraState.Save(); }), glyph: "⟳"),
+            Ui.ListRow(L.S("auto_update"), L.S("auto_update_subs_d"), Ui.Switch(st.AutoUpdate, v => { st.AutoUpdate = v; SatraState.Save(); }), glyph: "⟳"),
             Ui.ListRow(L.S("autostart"), null, Ui.Switch(Cfg.GuiItem.AutoRun, async v => { Cfg.GuiItem.AutoRun = v; await AutoStartupHandler.UpdateTask(Cfg); await ConfigHandler.SaveConfig(Cfg); }), glyph: "⏻"),
-            Ui.ListRow(L.S("updates"), L.S("updates_d"), Ui.T("›", 18, FontWeight.Bold, P.Text3), UpdatesSheet, "↓"),
-            Ui.ListRow(L.S("show_advanced"), L.S("simple_mode_hint"), Ui.Switch(st.Advanced, v => { st.Advanced = v; SatraState.Save(); Refresh(); }), glyph: "⚙")));
+            Ui.ListRow(L.S("updates"), L.S("updates_d"), Ui.T("›", 18, FontWeight.Bold, P.Text3), () => { _cat = "updates"; Build(true); }, "↓")));
+    }
 
-        if (st.Advanced)
+    private void BuildAdvanced()
+    {
+        var st = SatraState.I;
+        _body.Children.Add(Ui.Group(
+            Ui.ListRow(L.S("show_advanced"), L.S("simple_mode_hint"), Ui.Switch(st.Advanced, v => { st.Advanced = v; SatraState.Save(); Build(true); }), glyph: "⚙")));
+        if (!st.Advanced) { _body.Children.Add(Ui.Caption(L.S("adv_off_d"), P.Text3)); return; }
         {
+            var ib = Cfg.Inbound.First();
+            var port = Ui.Input("10808", ib.LocalPort.ToString()); port.Width = 110;
+            port.LostFocus += async (_, _) =>
+            {
+                if (!int.TryParse(port.Text, out var p) || p < 1024 || p > 65000 || p == ib.LocalPort) { port.Text = ib.LocalPort.ToString(); return; }
+                ib.LocalPort = p; await ConfigHandler.SaveConfig(Cfg); await SatraCore.I.Main.Reload(); SatraCore.I.Notify(L.S("saved"));
+            };
+            async Task Save() { await ConfigHandler.SaveConfig(Cfg); await SatraCore.I.Main.Reload(); }
+            var levels = new[] { "warning", "info", "error", "none", "debug" };
+            var lvl = new ComboBox { ItemsSource = levels, SelectedIndex = Math.Max(0, Array.IndexOf(levels, Cfg.CoreBasicItem.Loglevel)), MinWidth = 120 };
+            lvl.SelectionChanged += async (_, _) => { Cfg.CoreBasicItem.Loglevel = levels[Math.Max(0, lvl.SelectedIndex)]; await Save(); };
+            var stacks = new[] { "gvisor", "system", "mixed" };
+            var stack = new ComboBox { ItemsSource = stacks, SelectedIndex = Math.Max(0, Array.IndexOf(stacks, Cfg.TunModeItem.Stack)), MinWidth = 120 };
+            stack.SelectionChanged += async (_, _) => { Cfg.TunModeItem.Stack = stacks[Math.Max(0, stack.SelectedIndex)]; await Save(); };
+            var mtu = Ui.Input("9000", Cfg.TunModeItem.Mtu.ToString()); mtu.Width = 110;
+            mtu.LostFocus += async (_, _) => { if (int.TryParse(mtu.Text, out var m) && m is >= 1280 and <= 9000 && m != Cfg.TunModeItem.Mtu) { Cfg.TunModeItem.Mtu = m; await Save(); } };
+            _body.Children.Add(Ui.Section(L.S("adv_core")));
+            _body.Children.Add(Ui.Group(
+                Ui.ListRow(L.S("adv_port"), L.S("adv_port_d"), port, glyph: "⌁"),
+                Ui.ListRow(L.S("adv_udp"), null, Ui.Switch(ib.UdpEnabled, async v => { ib.UdpEnabled = v; await Save(); }), glyph: "⇅"),
+                Ui.ListRow(L.S("adv_sniff"), L.S("adv_sniff_d"), Ui.Switch(ib.SniffingEnabled, async v => { ib.SniffingEnabled = v; await Save(); }), glyph: "◎"),
+                Ui.ListRow(L.S("adv_fragment"), L.S("adv_fragment_d"), Ui.Switch(Cfg.CoreBasicItem.EnableFragment, async v => { Cfg.CoreBasicItem.EnableFragment = v; await Save(); }), glyph: "✂"),
+                Ui.ListRow(L.S("adv_log"), null, lvl, glyph: "▤")));
+            _body.Children.Add(Ui.Section(L.S("mode_vpn") + " (TUN)"));
+            _body.Children.Add(Ui.Group(
+                Ui.ListRow(L.S("adv_stack"), null, stack, glyph: "≡"),
+                Ui.ListRow("MTU", null, mtu, glyph: "↔"),
+                Ui.ListRow(L.S("adv_strict"), L.S("adv_strict_d"), Ui.Switch(Cfg.TunModeItem.StrictRoute, async v => { Cfg.TunModeItem.StrictRoute = v; await Save(); }), glyph: "⛨"),
+                Ui.ListRow("IPv6", null, Ui.Switch(Cfg.TunModeItem.EnableIPv6Address, async v => { Cfg.TunModeItem.EnableIPv6Address = v; await Save(); }), glyph: "6")));
             var m = SatraCore.I.Main;
             Control Open(string title, string glyph, ReactiveCommand<RxVoid, RxVoid> cmd) =>
                 Ui.ListRow(title, null, Ui.T("›", 18, FontWeight.Bold, P.Text3), () => cmd.Execute().Subscribe(_ => { }), glyph);
@@ -138,13 +225,19 @@ public class SettingsPage : IPage
                 Open(L.S("sub_settings"), "▣", m.SubSettingCmd),
                 Open(L.S("logs"), "▤", m.OpenTheFileLocationCmd))));
         }
+    }
 
+    private void BuildAbout()
+    {
         _body.Children.Add(Ui.Section(L.S("about")));
         _body.Children.Add(Ui.Group(
             Ui.ListRow("SatraN", $"v{Identity.Version} · Xray · v2rayN {Utils.GetVersionInfo()} · {Identity.Os}", Ui.Btn("Exit", Ui.Kind.Danger, () => _ = AppManager.Instance.AppExitAsync(true), size: 13), glyph: "S", glyphColor: P.Accent)));
     }
 
-    private void UpdatesSheet()
+    private void UpdatesSheet() => SatraShell.I.Sheet(L.S("updates"), UpdatesView(), 520);
+
+    /// App + components updates (inline in the Updates category).
+    private Control UpdatesView()
     {
         var kinds = new[] { AssetUpdates.Kind.Geo, AssetUpdates.Kind.Rules, AssetUpdates.Kind.Xray, AssetUpdates.Kind.SingBox };
         var names = new[] { L.S("asset_geo"), L.S("asset_rules"), "Xray", "sing-box" };
@@ -231,11 +324,40 @@ public class SettingsPage : IPage
             SatraCore.I.Notify(errs.Count == 0 ? L.S("update_all") + " · " + L.S("done") : string.Join(" · ", errs));
             refreshAll();
         }, "⟳", 13);
-        SatraShell.I.Sheet(L.S("updates"), Ui.V(12,
-            Ui.Card(appRow, new Thickness(14, 10)),
+        return Ui.V(12,
+            Ui.Section("SatraN"),
+            Ui.Card(AppUpdateCard(), new Thickness(16, 12)),
+            Ui.Group(
+                Ui.ListRow(L.S("upd_mode"), null, Segmented([L.S("upd_mode_notify"), L.S("upd_mode_auto")], SatraState.I.AppUpdateMode, i => { SatraState.I.AppUpdateMode = i; SatraState.Save(); if (i == 1 && AutoUpdater.Found != null) _ = AutoUpdater.DownloadAsync(); Build(true); }), glyph: "↓"),
+                Ui.ListRow(L.S("upd_assets_auto"), L.S("upd_assets_auto_d"), Ui.Switch(SatraState.I.AutoAssets, v => { SatraState.I.AutoAssets = v; SatraState.Save(); }), glyph: "⟳")),
             Ui.Row(Ui.Section(L.S("asset_section")), updAll),
             new Border { Background = P.B(P.Surface), CornerRadius = Ui.RCard, ClipToBounds = true, Child = list },
-            Ui.Caption(L.S("updates_hint"), P.Text3)), 520);
+            Ui.Caption(L.S("updates_hint"), P.Text3));
+    }
+
+    private static Control AppUpdateCard()
+    {
+        var u = AutoUpdater.Found;
+        var st = AutoUpdater.State;
+        var checkedAt = SatraState.I.LastAppCheck > 0 ? DateTimeOffset.FromUnixTimeSeconds(SatraState.I.LastAppCheck).LocalDateTime.ToString("yyyy-MM-dd HH:mm") : "—";
+        var line = st switch
+        {
+            AutoUpdater.St.Checking => L.S("checking"),
+            AutoUpdater.St.Downloading => L.S("app_update_downloading") + $" {AutoUpdater.Progress * 100:0}%",
+            AutoUpdater.St.Ready => L.F("upd_ready", u?.Version ?? ""),
+            AutoUpdater.St.Available => L.F("app_update_available", u?.Version ?? ""),
+            AutoUpdater.St.Error => AutoUpdater.Error ?? L.S("asset_err_check"),
+            AutoUpdater.St.UpToDate => L.S("up_to_date"),
+            _ => "",
+        };
+        Control btn = u != null
+            ? Ui.Btn(st == AutoUpdater.St.Ready ? L.S("upd_restart") : L.S("upd_install"), Ui.Kind.Primary, () => _ = AutoUpdater.InstallAsync(), null, 13)
+            : Ui.Btn(L.S("check"), Ui.Kind.Tinted, () => _ = AutoUpdater.RunAsync(true), "⟳", 13);
+        var kids = new List<Control> { Ui.Row(Ui.V(3, Ui.T($"v{Identity.Version}" + (SatraAppUpdate.IsDebInstall ? " · apt" : ""), 15, FontWeight.SemiBold), Ui.Caption(line, st == AutoUpdater.St.Error ? P.Danger : P.Text2),
+            Ui.Caption(L.F("upd_checked", checkedAt), P.Text3)), btn) };
+        if (st == AutoUpdater.St.Downloading) kids.Add(Ui.Bar(AutoUpdater.Progress, P.Accent, 4));
+        if (AutoUpdater.PendingCores.Count > 0) kids.Add(Ui.Caption(L.F("upd_cores_pending", string.Join(", ", AutoUpdater.PendingCores)), P.Warning));
+        return Ui.V(8, kids.ToArray());
     }
 
     private void ExceptionsSheet()

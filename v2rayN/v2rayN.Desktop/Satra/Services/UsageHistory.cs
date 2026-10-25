@@ -64,7 +64,7 @@ public static class UsageHistory
         foreach (var k in SatraState.I.Usage.Keys.Where(k => string.CompareOrdinal(k, cut) < 0).ToList()) SatraState.I.Usage.Remove(k);
         // keep each day bounded
         foreach (var d in SatraState.I.Usage.Values.Where(v => v.Count > 600))
-            foreach (var k in d.OrderBy(kv => kv.Value).Take(d.Count - 500).Select(kv => kv.Key).ToList()) d.Remove(k);
+            foreach (var k in d.Where(kv => kv.Key[0] is 'a' or 'd').OrderBy(kv => kv.Value).Take(d.Count - 500).Select(kv => kv.Key).ToList()) d.Remove(k);
     }
 
     /// <summary>Top entries over the last <paramref name="days"/> days. kind: 'a' apps, 'd' sites.</summary>
@@ -79,5 +79,36 @@ public static class UsageHistory
         }
         return acc.Where(kv => string.IsNullOrWhiteSpace(filter) || kv.Key.Contains(filter.Trim(), StringComparison.OrdinalIgnoreCase))
             .OrderByDescending(kv => kv.Value).Take(take).Select(kv => (kv.Key, kv.Value)).ToList();
+    }
+
+    /// <summary>Per-config bytes, recorded from the core's stats every second while connected (any mode).</summary>
+    public static void AddConfig(string? id, long up, long down)
+    {
+        if (string.IsNullOrEmpty(id) || up + down <= 0) return;
+        var key = DateTime.Today.ToString("yyyy-MM-dd");
+        lock (SatraState.I.Usage)
+        {
+            if (!SatraState.I.Usage.TryGetValue(key, out var d)) SatraState.I.Usage[key] = d = [];
+            if (up > 0) d["u:" + id] = d.GetValueOrDefault("u:" + id) + up;
+            if (down > 0) d["w:" + id] = d.GetValueOrDefault("w:" + id) + down;
+        }
+    }
+
+    public static Dictionary<string, (long Up, long Down)> PerConfig(int days)
+    {
+        var acc = new Dictionary<string, (long Up, long Down)>();
+        lock (SatraState.I.Usage)
+            for (var i = 0; i < days; i++)
+            {
+                if (!SatraState.I.Usage.TryGetValue(DateTime.Today.AddDays(-i).ToString("yyyy-MM-dd"), out var d)) continue;
+                foreach (var (k, v) in d)
+                {
+                    if (k.Length < 3 || k[1] != ':' || (k[0] != 'u' && k[0] != 'w')) continue;
+                    var id = k[2..];
+                    var c = acc.GetValueOrDefault(id);
+                    acc[id] = k[0] == 'u' ? (c.Up + v, c.Down) : (c.Up, c.Down + v);
+                }
+            }
+        return acc;
     }
 }

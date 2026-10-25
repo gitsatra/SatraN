@@ -44,6 +44,7 @@ public static class AssetUpdates
         return PackagedCore(k);
     }
 
+    public static bool CoreNeedsRoot(Kind k) => NeedsRoot(LiveCore(k));
     private static bool NeedsRoot(string path) => OperatingSystem.IsLinux() && path.StartsWith("/opt/", StringComparison.Ordinal);
 
     public static async Task<string> CoreVersionAsync(Kind k)
