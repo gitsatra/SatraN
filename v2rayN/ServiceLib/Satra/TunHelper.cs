@@ -140,6 +140,7 @@ public static class TunHelper
     public static async Task<(bool ok, string? err)> StartAsync(string config)
     {
         await StopAsync();
+        var gen = Volatile.Read(ref _gen);
         var s = Connect(1000);
         if (s == null) return (false, "helper unavailable");
         var rd = new StreamReader(s, leaveOpen: true);
@@ -148,6 +149,14 @@ public static class TunHelper
             var r = await Call(s, rd, new JsonObject { ["op"] = "start", ["config"] = config }, 25000);
             if ((bool?)r?["ok"] == true)
             {
+                if (Volatile.Read(ref _gen) != gen)
+                {
+                    // user disconnected (or another start began) while the helper was bringing TUN up:
+                    // never leave a tunnel running with no core behind it.
+                    try { await s.WriteAsync(System.Text.Encoding.UTF8.GetBytes("{\"op\":\"stop\"}\n")); await s.FlushAsync(); await rd.ReadLineAsync().WaitAsync(TimeSpan.FromSeconds(6)); } catch { }
+                    s.Dispose();
+                    return (false, "cancelled");
+                }
                 _session = s; _rd = rd;
                 _monitor = Task.Run(async () =>
                 {
@@ -167,8 +176,13 @@ public static class TunHelper
     /// <summary>Raised when the helper ended the session on its own (helper restarted, core died); TUN is already torn down.</summary>
     public static Action? SessionLost;
 
+    private static int _gen;
+    /// <summary>Invalidates any start still in flight (its tunnel is stopped as soon as it comes up).</summary>
+    public static void CancelPending() => Interlocked.Increment(ref _gen);
+
     public static async Task StopAsync()
     {
+        CancelPending();
         var s = _session; var m = _monitor;
         _session = null; _rd = null;
         if (s == null) return;

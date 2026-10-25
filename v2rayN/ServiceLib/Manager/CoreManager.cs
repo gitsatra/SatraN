@@ -14,6 +14,8 @@ public class CoreManager
 
     private ProcessService? _processService;
     public bool CoreRunning => _processService is { HasExited: false };
+    /// <summary>Satra: TUN really engaged (helper session open or fallback pre-core running).</summary>
+    public bool TunRunning => ServiceLib.Satra.TunHelper.Active || _processPreService is { HasExited: false };
     private ProcessService? _processPreService;
     private bool _linuxSudo = false;
     private Func<bool, string, Task>? _updateFunc;
@@ -204,10 +206,8 @@ public class CoreManager
                 _processService = null;
             }
 
-            if (ServiceLib.Satra.TunHelper.Active)
-            {
-                await ServiceLib.Satra.TunHelper.StopAsync();
-            }
+            // always: also cancels a helper start that is still in flight
+            await ServiceLib.Satra.TunHelper.StopAsync();
 
             if (_processPreService != null)
             {
@@ -256,6 +256,13 @@ public class CoreManager
                 if (preContext.IsTunEnabled && preCoreType == ECoreType.sing_box && await ServiceLib.Satra.TunHelper.AvailableAsync())
                 {
                     var (ok, err) = await ServiceLib.Satra.TunHelper.StartAsync(await File.ReadAllTextAsync(fileName));
+                    if (ok && (StartGate?.Invoke() == false || _processService is not { HasExited: false }))
+                    {
+                        // switched off / core died during the start: tear the tunnel down again
+                        await ServiceLib.Satra.TunHelper.StopAsync();
+                        ok = false; err = "cancelled";
+                    }
+                    if (err == "cancelled") { await UpdateFunc(false, "TUN start cancelled"); return; }
                     await UpdateFunc(!ok, ok ? "TUN started by SatraN Helper" : $"TUN helper: {err}");
                     if (!ok) TunFailed?.Invoke(err ?? "");
                     return;

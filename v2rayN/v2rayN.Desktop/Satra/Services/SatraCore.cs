@@ -40,7 +40,7 @@ public class SatraCore : ReactiveObject
         // Ping/speed rows update themselves via SpeedTestUpdated; do not RaiseChanged (that rebuilds pages).
         CoreConfigHandler.MuxPref = n => SatraState.I.Mux.TryGetValue(Pages.ServersPage.Key(n), out var v) ? v : null;
         CoreManager.StartGate = () => Phase is ConnPhase.Connecting or ConnPhase.On;
-        CoreManager.TunFailed = _ => Avalonia.Threading.Dispatcher.UIThread.Post(async () => { Logging.SaveLog("TUN failed -> disconnect (network left intact)"); await DisconnectAsync(); });
+        CoreManager.TunFailed = e => Avalonia.Threading.Dispatcher.UIThread.Post(async () => { Logging.SaveLog("TUN failed -> disconnect (network left intact): " + e); await DisconnectAsync(); Toast?.Invoke(L.S("tun_failed")); Set(ConnPhase.Failed); });
         ServiceLib.Satra.TunHelper.SessionLost = () => Avalonia.Threading.Dispatcher.UIThread.Post(async () => { if (Phase != ConnPhase.On) return; Logging.SaveLog("TUN helper session lost -> reconnect"); await DisconnectAsync(); await Task.Delay(2500); await ConnectAsync(); });
         try { foreach (var f in Directory.EnumerateFiles(Utils.GetBinConfigPath(), "configTest*.json")) if (File.GetLastWriteTimeUtc(f) < DateTime.UtcNow.AddMinutes(-10)) File.Delete(f); } catch { }
         DispatcherTimer.Run(() => { Tick(); return true; }, TimeSpan.FromSeconds(1));
@@ -219,7 +219,7 @@ public class SatraCore : ReactiveObject
                 if (i == 4 && !CoreManager.Instance.CoreRunning) await Main.Reload();
                 engaged = SatraState.I.Mode switch
                 {
-                    "tun" => Cfg.TunModeItem.EnableTun && CoreManager.Instance.CoreRunning && TunIfaceUp(),
+                    "tun" => Cfg.TunModeItem.EnableTun && CoreManager.Instance.CoreRunning && CoreManager.Instance.TunRunning && TunIfaceUp(),
                     "proxy" => Cfg.SystemProxyItem.SysProxyType == ESysProxyType.ForcedChange && CoreManager.Instance.CoreRunning,
                     _ => CoreManager.Instance.CoreRunning,
                 };
@@ -231,7 +231,7 @@ public class SatraCore : ReactiveObject
             bool ok;
             if (SatraState.I.Mode == "tun")
             {
-                ok = engaged && TunIfaceUp() && CoreManager.Instance.CoreRunning;
+                ok = engaged && TunIfaceUp() && CoreManager.Instance.CoreRunning && CoreManager.Instance.TunRunning;
                 if (ok)
                 {
                     try

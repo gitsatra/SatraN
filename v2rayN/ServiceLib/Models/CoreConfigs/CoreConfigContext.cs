@@ -21,6 +21,8 @@ public record CoreConfigContext
     public HashSet<string> ProtectDomainList { get; init; } = [];
     // Satra: Linux TUN chain — bind every xray outbound to the physical NIC so it bypasses the TUN without process_path (no CAP_SYS_PTRACE).
     public string? XrayBindInterface { get; init; }
+    // Satra: real upstream server addresses (main core's nodes) that the pre-socks TUN must route outside the tunnel.
+    public List<string> TunExcludeNodeAddresses { get; init; } = [];
     // Typically, it is the core of the outbound chain
     public HashSet<ECoreType> ProtectCoreTypeList { get; init; } = [];
 

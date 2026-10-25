@@ -134,6 +134,7 @@ public static class L
         ["lan_hotspot"] = "Turn on Mobile Hotspot",
         ["lan_note"] = "Your firewall may ask to allow SatraN on private networks.",
         ["vpn_denied"] = "VPN capabilities missing. Run: sudo dpkg -i satran_*.deb — then connect again (no password in the app).",
+        ["tun_failed"] = "VPN (TUN) could not reach the internet through this server, so it was switched off and your network was restored. Try another server.",
     };
 
     private static readonly Dictionary<string, string> Fa = new()
@@ -254,6 +255,7 @@ public static class L
         ["lan_hotspot"] = "روشن کردن هات‌اسپات ویندوز",
         ["lan_note"] = "ممکن است فایروال برای اجازه به SatraN در شبکه خصوصی سؤال کند.",
         ["vpn_denied"] = "قابلیت VPN روی سیستم نیست. در ترمینال بزن: sudo dpkg -i satran_*.deb — داخل اپ دیگر پسورد نمی‌خواهد.",
+        ["tun_failed"] = "حالت VPN (TUN) با این سرور به اینترنت نرسید؛ خاموش شد و شبکه‌ات به حالت عادی برگشت. سرور دیگری را امتحان کن.",
     };
 
     private static readonly Dictionary<string, string> Ru = new()
@@ -374,5 +376,6 @@ public static class L
         ["lan_hotspot"] = "Включить мобильный хот-спот",
         ["lan_note"] = "Брандмауэр может спросить разрешение для SatraN в частной сети.",
         ["vpn_denied"] = "Нет capabilities для VPN. Выполните: sudo dpkg -i satran_*.deb — в приложении пароль больше не нужен.",
+        ["tun_failed"] = "VPN (TUN) не смог выйти в интернет через этот сервер — он выключен, сеть восстановлена. Попробуйте другой сервер.",
     };
 }

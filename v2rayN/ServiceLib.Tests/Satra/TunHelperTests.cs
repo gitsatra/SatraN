@@ -50,4 +50,12 @@ public class TunHelperTests
         Ok(!A(1002));
         Ok(!A(-1));
     }
+
+    [Test]
+    public void Sanitize_keeps_upstream_server_exclude_so_tun_does_not_loop()
+    {
+        var cfg = Good.Replace("\"127.0.0.1/32\"", "\"127.0.0.1/32\",\"107.189.24.195/32\"");
+        var ex = JsonNode.Parse(TunHelper.Sanitize(cfg, "/run/satran"))!["inbounds"]![0]!["route_exclude_address"]!.AsArray().Select(x => (string?)x).ToList();
+        Ok(ex.Contains("107.189.24.195/32"));
+    }
 }

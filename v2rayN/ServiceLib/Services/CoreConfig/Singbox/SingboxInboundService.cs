@@ -83,7 +83,7 @@ public partial class CoreConfigSingboxService
                 {
                     excludes.AddRange(_config.TunModeItem.RouteExcludeAddress);
                 }
-                foreach (var cidr in ResolveNodeExcludeCidrs(_node.Address))
+                foreach (var cidr in context.TunExcludeNodeAddresses.Prepend(_node.Address).SelectMany(a => ResolveNodeExcludeCidrs(a)))
                 {
                     if (!excludes.Contains(cidr, StringComparer.OrdinalIgnoreCase))
                     {

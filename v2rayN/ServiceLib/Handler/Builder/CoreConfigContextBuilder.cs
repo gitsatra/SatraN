@@ -193,6 +193,18 @@ public class CoreConfigContextBuilder
                 },
             };
         }
+        if (mainResult.Context.IsTunEnabled)
+        {
+            // Satra: the pre-socks node is 127.0.0.1, so without this the real server IP is routed into
+            // the TUN -> socks -> xray -> TUN loop ("connected" but no traffic, stuck tunnel).
+            var addrs = new List<string>();
+            foreach (var n in mainResult.Context.AllProxiesMap.Values.Append(mainResult.Context.Node))
+            {
+                var a = n?.Address?.Trim();
+                if (!a.IsNullOrEmpty() && a is not ("127.0.0.1" or "::1" or "localhost") && !addrs.Contains(a!)) addrs.Add(a!);
+            }
+            preResult = preResult with { Context = preResult.Context with { TunExcludeNodeAddresses = addrs } };
+        }
         return new CoreConfigContextBuilderAllResult(resolvedMainResult, preResult);
     }
 
