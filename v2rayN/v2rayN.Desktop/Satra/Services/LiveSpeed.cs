@@ -7,7 +7,7 @@ namespace v2rayN.Desktop.Satra.Services;
 /// <summary>Download-only speed test per config through a throw-away core instance, reporting live Mbps.</summary>
 public static class LiveSpeed
 {
-    public static readonly string[] Urls = ["https://speed.cloudflare.com/__down?bytes=200000000", "https://cachefly.cachefly.net/100mb.test"];
+    public static readonly string[] Urls = ["https://speed.cloudflare.com/__down?bytes=50000000", "https://cachefly.cachefly.net/100mb.test"];
     public static readonly TimeSpan Duration = TimeSpan.FromSeconds(8);
 
     /// <param name="onSample">(Mbps, progress 0..1)</param>

@@ -100,7 +100,22 @@ public static class SubscriptionHandler
         return downloadHandle;
     }
 
+    /// <summary>Satra: invisible last resort when direct (and proxy) fetch failed — the host retries through
+    /// working configs (each try gets a proxy to use). Returns null when nothing worked.</summary>
+    public static Func<Func<IWebProxy, Task<string?>>, Task<string?>>? FallbackFetch;
+
     private static async Task<string> DownloadSubscriptionContent(DownloadService downloadHandle, string url, bool blProxy, string userAgent)
+    {
+        var result = await DownloadSubscriptionContentCore(downloadHandle, url, blProxy, userAgent);
+        if (result.IsNullOrEmpty() && FallbackFetch != null)
+        {
+            try { result = await FallbackFetch(p => downloadHandle.TryDownloadString(url, p, userAgent)) ?? string.Empty; }
+            catch (Exception ex) { Logging.SaveLog("sub fallback", ex); }
+        }
+        return result ?? string.Empty;
+    }
+
+    private static async Task<string> DownloadSubscriptionContentCore(DownloadService downloadHandle, string url, bool blProxy, string userAgent)
     {
         var result = await downloadHandle.TryDownloadString(url, blProxy, userAgent);
 

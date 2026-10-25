@@ -1,3 +1,4 @@
+using ServiceLib.Handler.Fmt;
 using Avalonia.Animation;
 using Avalonia.Animation.Easings;
 using Avalonia.Media.Transformation;
@@ -28,7 +29,7 @@ public class ServersPage : IPage
         _root.Children.Add(Ui.Row(Ui.Title(L.S("servers")), Ui.H(8,
             Ui.Btn(L.S("ping_all"), Ui.Kind.Ghost, () => _ = PingAllAsync(), "◎", 13),
             Ui.Btn(L.S("speed_all"), Ui.Kind.Ghost, () => SpeedSheet(SatraCore.I.Profiles.ProfileItems.ToList()), "↯", 13),
-            Ui.Btn(L.S("add"), Ui.Kind.Tinted, () => _ = AddAsync(), "+", 13))));
+            AddButton())));
 
         var smart = Ui.Card(Ui.Row(
             Ui.H(12, new Border { Width = 36, Height = 36, CornerRadius = Ui.RCtl, Background = P.B(P.AccentSoft), Child = Center(Icons.Make("⚡", 18, P.Accent)) },
@@ -66,6 +67,80 @@ public class ServersPage : IPage
         return c;
     }
 
+    private Button AddButton()
+    {
+        var b = Ui.Btn(L.S("add"), Ui.Kind.Tinted, null, "+", 13);
+        var menu = new ContextMenu();
+        menu.Items.Add(Mi(L.S("add_clip"), () => _ = AddAsync()));
+        menu.Items.Add(Mi(L.S("ed_add") + "…", () => ServerEditor.Open()));
+        b.ContextMenu = menu;
+        b.Click += (_, _) => menu.Open(b);
+        return b;
+    }
+
+    private static MenuItem Mi(string header, Action a)
+    {
+        var m = new MenuItem { Header = header };
+        m.Click += (_, _) => a();
+        return m;
+    }
+
+    /// <summary>Right-click on a server row: everything v2rayN offers per server, in plain words.</summary>
+    private ContextMenu RowMenu(ProfileItemModel p)
+    {
+        var m = new ContextMenu();
+        m.Items.Add(Mi(L.S("cm_connect"), () => _ = UseAndConnect(p)));
+        m.Items.Add(Mi(L.S("cm_set_active"), () => _ = SatraCore.I.UseAsync(p)));
+        m.Items.Add(new Separator());
+        m.Items.Add(Mi(L.S("cm_edit"), () => ServerEditor.Open(p)));
+        m.Items.Add(Mi(L.S("cm_duplicate"), () => _ = Do(async c => await ConfigHandler.CopyServer(c, [await Prof(p)]))));
+        m.Items.Add(Mi(L.S("ping"), () => _ = PingEngine.I.PingOneAsync(p)));
+        m.Items.Add(Mi(L.S("speed"), () => SpeedSheet([p])));
+        m.Items.Add(new Separator());
+        m.Items.Add(Mi(L.S("ed_copy_link"), () => _ = CopyLink(p)));
+        m.Items.Add(Mi(L.S("cm_qr"), () => ServerEditor.ShowQr(p)));
+        var move = new MenuItem { Header = L.S("cm_move") };
+        move.Items.Add(Mi(L.S("cm_top"), () => _ = Move(p, EMove.Top)));
+        move.Items.Add(Mi(L.S("cm_up"), () => _ = Move(p, EMove.Up)));
+        move.Items.Add(Mi(L.S("cm_down"), () => _ = Move(p, EMove.Down)));
+        move.Items.Add(Mi(L.S("cm_bottom"), () => _ = Move(p, EMove.Bottom)));
+        m.Items.Add(move);
+        m.Items.Add(new Separator());
+        m.Items.Add(Mi(L.S("cm_delete"), () => _ = Delete(p)));
+        return m;
+    }
+
+    private static async Task<ProfileItem> Prof(ProfileItemModel p) { var id = p.IndexId; return (await Task.Run(() => AppManager.Instance.GetProfileItem(id)))!; }
+
+    private static async Task Do(Func<Config, Task<int>> f)
+    {
+        await f(AppManager.Instance.Config);
+        await SatraCore.I.Profiles.RefreshServers();
+        SatraCore.I.RaiseChanged();
+    }
+
+    private static async Task CopyLink(ProfileItemModel p)
+    {
+        var link = FmtHandler.GetShareUri(await Prof(p));
+        if (string.IsNullOrEmpty(link)) { SatraShell.I.Toast(L.S("ed_no_link")); return; }
+        await SatraShell.I.Copy(link);
+    }
+
+    private static async Task Move(ProfileItemModel p, EMove how)
+    {
+        var ids = SatraCore.I.Profiles.ProfileItems.Select(x => x.IndexId).ToList();
+        var i = ids.IndexOf(p.IndexId);
+        if (i < 0) return;
+        await Do(c => ConfigHandler.MoveServer(c, ids, i, how));
+    }
+
+    private static async Task Delete(ProfileItemModel p)
+    {
+        var prof = await Prof(p);
+        await Do(c => ConfigHandler.RemoveServers(c, [prof]));
+        SatraShell.I.Toast(L.S("cm_deleted"), L.S("undo"), () => _ = Do(async c => { prof.IndexId = ""; return await ConfigHandler.AddServer(c, prof); }));
+    }
+
     private async Task AddAsync() => await SatraCore.I.AddFromClipboardAsync(await SatraShell.I.ClipboardText());
 
     private readonly ContentControl _speedPanel = new() { Margin = new Thickness(0, 0, 0, 12) };
@@ -73,6 +148,7 @@ public class ServersPage : IPage
 
     /// <summary>Inline (same page, no popup) download-only speed test with a live gauge; results sorted fastest first.</summary>
     public static ServersPage? Last;
+    public void DevCtx(int n) { if (_list.Children.Count > n && _list.Children[n] is Control c) c.ContextMenu?.Open(c); }
     public void DevSpeed(int n) => SpeedSheet(n < 0 ? SatraCore.I.Profiles.ProfileItems.Take(3).ToList() : [SatraCore.I.Profiles.ProfileItems[n]]);
     private void SpeedSheet(List<ProfileItemModel> list) => SpeedInline(_speedPanel, list, () => UpdatePingsInPlace());
 
@@ -346,9 +422,11 @@ public class ServersPage : IPage
         var card = Ui.Card(Ui.Row(left, Ui.H(6, right.ToArray())), new Thickness(12, 10), isActive ? P.Lerp(P.Surface, P.Success, 0.08) : null);
         if (isActive) { card.BorderBrush = P.B(P.Success, 0.45); card.BorderThickness = new Thickness(1); }
         card.Cursor = new Cursor(StandardCursorType.Hand);
+        card.ContextMenu = RowMenu(p);
         card.DoubleTapped += (_, _) => _ = UseAndConnect(p);
         card.PointerReleased += (s, e) =>
         {
+            if (e.InitialPressMouseButton != MouseButton.Left) return;
             if (e.Source is Visual v && v.FindAncestorOfType<Button>(true) != null) return;
             _ = SatraCore.I.UseAsync(p);
         };

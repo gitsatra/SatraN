@@ -41,6 +41,7 @@ public class SatraCore : ReactiveObject
         CoreManager.StartGate = () => Phase is ConnPhase.Connecting or ConnPhase.On;
         DispatcherTimer.Run(() => { Tick(); return true; }, TimeSpan.FromSeconds(1));
         DispatcherTimer.Run(() => { _ = AutoUpdateSubsAsync(); return true; }, TimeSpan.FromMinutes(15));
+        SubFallback.Install();
         DispatcherTimer.RunOnce(() => _ = AutoUpdateSubsAsync(true), TimeSpan.FromSeconds(4));
     }
 
@@ -360,12 +361,21 @@ public class SatraCore : ReactiveObject
 
     public async Task UpdateSubsAsync(string? subId = null)
     {
+        SubFallback.Install();
+        SubFallback.LastVia = null;
         await Main.UpdateSubscriptionProcess(subId ?? "", false);
+        var rescued = SubFallback.LastVia != null;
         foreach (var s in await AppManager.Instance.SubItems() ?? [])
         {
             if (subId == null || s.Id == subId)
             {
                 await SubInfo.RefreshAsync(s);
+                // fetched through a working config: the direct header probe failing is expected — stay calm
+                if (rescued && SatraState.I.Subs.TryGetValue(s.Id, out var rm) && rm.Error != null)
+                {
+                    rm.Error = null;
+                    rm.Fetched = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
+                }
                 await HubSync.EnsureRegisteredAsync(s);
                 // fetched fine but nothing usable inside → bad format
                 if (SatraState.I.Subs.TryGetValue(s.Id, out var sm) && sm.Error == null && s.Url.StartsWith("http")

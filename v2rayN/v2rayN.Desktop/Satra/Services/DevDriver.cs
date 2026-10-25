@@ -64,6 +64,11 @@ public static class DevDriver
                 var wh = arg.Split('x'); var win = SatraShell.I.Window;
                 win.WindowState = WindowState.Normal; win.Width = double.Parse(wh[0]); win.Height = double.Parse(wh[1]);
                 await Task.Delay(500); break;
+            case "editor": SatraShell.I.Go("servers"); await Task.Delay(300); ServerEditor.Open(arg.Length > 0 ? Nth(arg) : null); break;
+            case "edset": { var kv = arg.Split(' ', 2); ServerEditor.DevSet?.Invoke(kv[0], kv.Length > 1 ? kv[1] : ""); break; }
+            case "edsave": ServerEditor.DevSave?.Invoke(); await Task.Delay(800); break;
+            case "ctx": SatraShell.I.Go("servers"); await Task.Delay(300); ServersPage.Last?.DevCtx(int.Parse(arg)); break;
+            case "dump": File.WriteAllLines(Path.Combine(dir, "servers.txt"), SatraCore.I.Profiles.ProfileItems.Select(p => $"{p.ConfigType} {p.Remarks} {p.Address}:{p.Port} {p.Network} {p.StreamSecurity}")); break;
             case "scat": SettingsPage.DevCat = arg; SatraShell.I.Go("settings"); break;
             case "upcheck": await AutoUpdater.RunAsync(true); break;
             case "upstate": File.AppendAllText(Path.Combine(dir, "up.txt"), $"{DateTime.Now:HH:mm:ss} {AutoUpdater.State} {AutoUpdater.Found?.Version} {AutoUpdater.Progress:0.00} {AutoUpdater.Error}\n"); break;
