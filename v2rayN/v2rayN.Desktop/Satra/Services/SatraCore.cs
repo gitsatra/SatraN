@@ -290,29 +290,18 @@ public class SatraCore : ReactiveObject
     {
         var items = Profiles.ProfileItems.ToList();
         if (items.Count == 0) return null;
-        var fresh = items.Count(p => p.Delay > 0);
-        if (fresh < Math.Min(3, items.Count))
+        int D(ProfileItemModel p) => PingEngine.I.Ms(p.IndexId);
+        if (items.Count(p => D(p) > 0) < Math.Min(3, items.Count))
         {
-            await RunTestAsync(ESpeedActionType.Realping, items);
-            await WaitForDelaysAsync(items, TimeSpan.FromSeconds(quiet ? 8 : 15));
+            using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(quiet ? 10 : 20));
+            try { await PingEngine.I.PingAllAsync(items).WaitAsync(cts.Token); } catch (OperationCanceledException) { }
         }
-        var best = items.Where(p => p.Delay > 0).OrderBy(p => p.Delay).FirstOrDefault();
+        var best = items.Where(p => D(p) > 0).OrderBy(D).FirstOrDefault();
         if (best != null && best.IndexId != Cfg.IndexId)
         {
             await Profiles.SetDefaultServer(best.IndexId);
         }
         return best;
-    }
-
-    private static async Task WaitForDelaysAsync(List<ProfileItemModel> items, TimeSpan max)
-    {
-        var until = DateTime.Now + max;
-        while (DateTime.Now < until)
-        {
-            await Task.Delay(500);
-            if (items.All(p => p.Delay != 0)) break;
-            if (items.Count(p => p.Delay > 0) >= Math.Min(5, items.Count) && DateTime.Now > until - max / 2) break;
-        }
     }
 
     public async Task RunTestAsync(ESpeedActionType kind, IList<ProfileItemModel>? only = null)

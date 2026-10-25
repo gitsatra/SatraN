@@ -9,7 +9,7 @@ namespace v2rayN.Desktop.Satra.Pages;
 /// <summary>Servers list: structure rebuilds only when membership/order changes; ping/speed update in place.</summary>
 public class ServersPage : IPage
 {
-    private readonly Grid _root = new() { Margin = new Thickness(36, 28, 36, 0), RowDefinitions = new RowDefinitions("Auto,Auto,Auto,*") };
+    private readonly Grid _root = new() { Margin = new Thickness(36, 28, 36, 0), RowDefinitions = new RowDefinitions("Auto,Auto,Auto,Auto,*") };
     private readonly StackPanel _list = new() { Spacing = 8, Margin = new Thickness(0, 0, 0, 28) };
     private readonly WrapPanel _chips = new();
     private readonly TextBox _search = Ui.Input(L.S("search"));
@@ -17,7 +17,7 @@ public class ServersPage : IPage
     private readonly Dictionary<string, string?> _entry = [];
     private readonly Dictionary<string, ContentControl> _pingHosts = [];
     private readonly Dictionary<string, ContentControl> _speedHosts = [];
-    private bool _favOnly, _sortBest, _pinging;
+    private bool _favOnly, _sortBest;
     private string _sig = "";
 
     public Control View => _root;
@@ -42,18 +42,20 @@ public class ServersPage : IPage
         _search.TextChanged += (_, _) => Rebuild(true);
         var bar = Ui.Row(_chips, _search);
         bar.Margin = new Thickness(0, 0, 0, 12);
-        Grid.SetRow(bar, 2);
+        Grid.SetRow(bar, 3);
         _root.Children.Add(bar);
 
         var sv = new ScrollViewer { Content = _list };
-        Grid.SetRow(sv, 3);
+        Grid.SetRow(sv, 4);
         _root.Children.Add(sv);
         // Android parity: thin indeterminate bar while a ping run is active
-        Grid.SetRow(_testBar, 3);
+        Grid.SetRow(_testBar, 4);
+        Grid.SetRow(_speedPanel, 2);
+        _root.Children.Add(_speedPanel);
         _root.Children.Add(_testBar);
 
         SatraCore.I.Profiles.ProfileItems.CollectionChanged += (_, _) => Dispatcher.UIThread.Post(() => Rebuild(false));
-        SatraCore.I.Profiles.SpeedTestUpdated += () => { _lastResult = DateTime.UtcNow; Dispatcher.UIThread.Post(UpdatePingsInPlace); };
+        PingEngine.I.Changed += () => Dispatcher.UIThread.Post(() => { SetTesting(PingEngine.I.Running); UpdatePingsInPlace(); });
     }
 
     private static Control Center(Control c)
@@ -65,35 +67,58 @@ public class ServersPage : IPage
 
     private async Task AddAsync() => await SatraCore.I.AddFromClipboardAsync(await SatraShell.I.ClipboardText());
 
-    /// <summary>Download-only speed test with a live gauge; results sorted fastest first.</summary>
-    private void SpeedSheet(List<ProfileItemModel> list)
+    private readonly ContentControl _speedPanel = new() { Margin = new Thickness(0, 0, 0, 12) };
+    private CancellationTokenSource? _speedCts;
+
+    /// <summary>Inline (same page, no popup) download-only speed test with a live gauge; results sorted fastest first.</summary>
+    private void SpeedSheet(List<ProfileItemModel> list) => SpeedInline(_speedPanel, list, () => UpdatePingsInPlace());
+
+    public static void SpeedInline(ContentControl host, IReadOnlyList<ProfileItemModel?> list, Action? after = null, bool compact = false)
     {
         if (list.Count == 0) return;
+        if (host.Tag is CancellationTokenSource old) old.Cancel();
+        var cts = new CancellationTokenSource();
+        host.Tag = cts;
         var gauge = new Controls.SpeedGauge { HorizontalAlignment = HorizontalAlignment.Center };
+        if (compact) { gauge.Width = 220; gauge.Height = 186; }
         var now = Ui.T("", 15, FontWeight.SemiBold);
         now.HorizontalAlignment = HorizontalAlignment.Center;
         var step = Ui.Caption("", P.Text3);
         step.HorizontalAlignment = HorizontalAlignment.Center;
+        step.TextWrapping = TextWrapping.Wrap;
+        step.TextAlignment = TextAlignment.Center;
         var results = new StackPanel { Spacing = 6 };
-        var done = new List<(ProfileItemModel P, double Mbps)>();
-        var cts = new CancellationTokenSource();
-        gauge.DetachedFromVisualTree += (_, _) => cts.Cancel();
-        Action close = () => { };
-        var stop = Ui.Btn(L.S("stop"), Ui.Kind.Ghost, () => { cts.Cancel(); close(); }, size: 13);
-        stop.HorizontalAlignment = HorizontalAlignment.Center;
-        close = SatraShell.I.Sheet(L.S("speed_test"), Ui.V(12, gauge, now, step, stop, results), 520);
+        var done = new List<(ProfileItemModel? P, double Mbps, string? Err)>();
+        var btns = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8, HorizontalAlignment = HorizontalAlignment.Center };
+        void Close() { cts.Cancel(); host.Content = null; }
+        Button stop = null!, retry = null!, close = null!;
+        stop = Ui.Btn(L.S("stop"), Ui.Kind.Ghost, () => cts.Cancel(), size: 13);
+        retry = Ui.Btn(L.S("try_again"), Ui.Kind.Tinted, () => SpeedInline(host, list, after, compact), "↻", 13);
+        close = Ui.Btn(L.S("close"), Ui.Kind.Ghost, Close, size: 13);
+        retry.IsVisible = false;
+        btns.Children.AddRange([stop, retry, close]);
+        var left = Ui.V(compact ? 4 : 8, gauge, now, step, btns);
+        left.Width = 300;
+        var grid = new Grid { ColumnDefinitions = new ColumnDefinitions("Auto,*"), ColumnSpacing = 20 };
+        grid.Children.Add(left);
+        var sv = new ScrollViewer { Content = results, MaxHeight = 300, VerticalAlignment = VerticalAlignment.Center, IsVisible = list.Count > 1 };
+        Grid.SetColumn(sv, 1);
+        grid.Children.Add(sv);
+        host.Content = Ui.Enter(Ui.Card(Ui.V(10, Ui.Row(Ui.T(L.S("speed_test"), 15, FontWeight.SemiBold), Ui.Caption(L.S("speed_dl_only"), P.Text3)), grid), new Thickness(18, 14)));
 
+        static string Name(ProfileItemModel? p) => p == null ? (SatraCore.I.Phase == ConnPhase.On ? L.S("speed_via_vpn") : L.S("speed_direct")) : Ui.CleanName(p.Remarks);
         void Paint()
         {
             results.Children.Clear();
             var rank = 0;
-            foreach (var (pp, v) in done.OrderByDescending(d => d.Mbps))
+            foreach (var (pp, v, err) in done.OrderByDescending(d => d.Mbps))
             {
-                var best = rank++ == 0 && v > 0;
+                var best = rank++ == 0 && v > 0 && done.Count > 1;
                 var bar = Ui.Bar(v > 0 ? Controls.SpeedGauge.Frac(v) : 0, v <= 0 ? P.Danger : best ? P.Success : P.Accent, 5);
-                results.Children.Add(Ui.Enter(new Border { Background = P.B(best ? P.SuccessSoft : P.Fill), CornerRadius = Ui.RCtl, Padding = new Thickness(12, 8),
-                    Child = Ui.V(6, Ui.Row(Ui.T($"{(best ? "★ " : "")}{Ui.CleanName(pp.Remarks)}", 13, FontWeight.SemiBold),
-                        Ui.T(v > 0 ? $"{v:0.0} Mbps" : L.S("failed"), 13, FontWeight.Bold, v <= 0 ? P.Danger : best ? P.Success : P.Text)), bar) }));
+                var row = Ui.V(6, Ui.Row(Ui.T($"{(best ? "★ " : "")}{Name(pp)}", 13, FontWeight.SemiBold),
+                    Ui.T(v > 0 ? Ui.Ltr($"{v:0.0} Mbps") : L.S("failed"), 13, FontWeight.Bold, v <= 0 ? P.Danger : best ? P.Success : P.Text)), bar);
+                if (v <= 0 && err != null) row.Children.Add(Ui.Caption(err, P.Text3));
+                results.Children.Add(Ui.Enter(new Border { Background = P.B(best ? P.SuccessSoft : P.Fill), CornerRadius = Ui.RCtl, Padding = new Thickness(12, 8), Child = row }));
             }
         }
 
@@ -103,20 +128,27 @@ public class ServersPage : IPage
             {
                 var p = list[i];
                 var idx = i;
-                Dispatcher.UIThread.Post(() => { now.Text = Ui.CleanName(p.Remarks); step.Text = list.Count > 1 ? L.F("speed_n", idx + 1, list.Count) : L.S("speed_dl"); gauge.Set(0, 0); });
-                double v;
-                try { v = await LiveSpeed.RunAsync(p, (m, pr) => Dispatcher.UIThread.Post(() => gauge.Set(m, pr)), cts.Token); }
+                Dispatcher.UIThread.Post(() => { now.Text = Name(p); step.Text = list.Count > 1 ? L.F("speed_n", idx + 1, list.Count) : L.S("speed_dl"); gauge.Set(0, 0); });
+                SpeedEngine.Result r;
+                try { r = await SpeedEngine.RunAsync(p, (m, pr) => Dispatcher.UIThread.Post(() => gauge.Set(m, pr)), cts.Token, list.Count > 1 ? TimeSpan.FromSeconds(6) : null); }
                 catch (OperationCanceledException) { break; }
-                Dispatcher.UIThread.Post(() => { gauge.Set(Math.Max(0, v), 1, true); done.Add((p, v)); Paint(); });
-                if (list.Count > 1) await Task.Delay(700);
+                Dispatcher.UIThread.Post(() =>
+                {
+                    gauge.Set(Math.Max(0, r.Mbps), 1, true);
+                    done.Add((p, r.Mbps, r.Error));
+                    if (r.Mbps <= 0) step.Text = L.S("failed") + (r.Error != null ? ": " + r.Error : "");
+                    Paint();
+                });
+                if (list.Count > 1) await Task.Delay(500);
             }
             Dispatcher.UIThread.Post(() =>
             {
-                step.Text = cts.IsCancellationRequested ? "" : L.S("speed_done");
+                if (cts.IsCancellationRequested && host.Content == null) return;
                 var best = done.Where(d => d.Mbps > 0).OrderByDescending(d => d.Mbps).FirstOrDefault();
-                if (best.P != null) { now.Text = "★ " + Ui.CleanName(best.P.Remarks); gauge.Set(best.Mbps, 1, true); }
-                stop.Content = L.S("close");
-                UpdatePingsInPlace();
+                if (best.Mbps > 0) { now.Text = (done.Count > 1 ? "★ " : "") + Name(best.P); gauge.Set(best.Mbps, 1, true); step.Text = cts.IsCancellationRequested ? L.S("stopped") : list.Count > 1 ? L.S("speed_done") : L.S("done"); }
+                else if (cts.IsCancellationRequested) step.Text = L.S("stopped");
+                stop.IsVisible = false; retry.IsVisible = true;
+                after?.Invoke();
             });
         });
     }
@@ -128,29 +160,14 @@ public class ServersPage : IPage
     };
     private readonly Dictionary<string, int> _shown = [];
     private DispatcherTimer? _pulse;
-    private DateTime _lastResult = DateTime.MinValue;
 
-    private async Task PingAllAsync()
-    {
-        _pinging = true;
-        SetTesting(true);
-        UpdatePingsInPlace(); // show … on empty
-        try
-        {
-            var start = DateTime.UtcNow;
-            _lastResult = DateTime.MinValue;
-            await SatraCore.I.RunTestAsync(ESpeedActionType.Realping); // returns before results arrive
-            // results stream in via SpeedTestUpdated; done when quiet for 2s after the first one (cap 15s)
-            while (DateTime.UtcNow - start < TimeSpan.FromSeconds(15)
-                   && (_lastResult == DateTime.MinValue || DateTime.UtcNow - _lastResult < TimeSpan.FromSeconds(2)))
-                await Task.Delay(250);
-        }
-        finally { _pinging = false; SetTesting(false); UpdatePingsInPlace(); }
-    }
+    private Task PingAllAsync() => PingEngine.I.PingAllAsync(SatraCore.I.Profiles.ProfileItems.ToList());
 
     private void SetTesting(bool on)
     {
         _testBar.IsVisible = on;
+        if (on && PingEngine.I.Total > 1) { _testBar.IsIndeterminate = false; _testBar.Maximum = PingEngine.I.Total; _testBar.Value = PingEngine.I.Done; }
+        else _testBar.IsIndeterminate = true;
         if (on && _pulse == null)
         {
             var t = 0.0;
@@ -178,14 +195,14 @@ public class ServersPage : IPage
     {
         var b = delay switch
         {
-            _ when spinning && delay == 0 => Ui.Pill("…", P.Accent, P.AccentSoft),
+            _ when spinning => Ui.Pill("…", P.Accent, P.AccentSoft),
             >= 10_000 or < 0 => Ui.Pill("timeout", P.Danger, P.DangerSoft),
             > 0 and < 150 => Ui.Pill(Ui.Ltr($"{delay} ms"), P.Success, P.SuccessSoft),
             > 0 and <= 250 => Ui.Pill(Ui.Ltr($"{delay} ms"), P.Warning, P.WarningSoft),
             > 0 => Ui.Pill(Ui.Ltr($"{delay} ms"), P.Danger, P.DangerSoft),
             _ => Ui.Pill("—", P.Text3, P.Fill),
         };
-        if (spinning && delay == 0) b.Tag = "pending";
+        if (spinning) b.Tag = "pending";
         return b;
     }
 
@@ -219,7 +236,7 @@ public class ServersPage : IPage
             if (_pingHosts.TryGetValue(id, out var host))
             {
                 var d = Delay(p);
-                var pending = _pinging && p.Delay == 0;
+                var pending = PingEngine.I.Get(id).Status == PingStatus.Pending;
                 var key = pending ? int.MinValue : d;
                 if (!(_shown.TryGetValue(id, out var prev) && prev == key && host.Content != null))
                 {
@@ -322,7 +339,7 @@ public class ServersPage : IPage
         _speedHosts[id] = speedHost;
 
         var right = new List<Control> { speedHost, pingHost };
-        right.Add(Ui.IconBtn("◎", () => _ = SatraCore.I.RunTestAsync(ESpeedActionType.Realping, [p]), L.S("ping"), P.Text2, 14));
+        right.Add(Ui.IconBtn("◎", () => _ = PingEngine.I.PingOneAsync(p), L.S("ping"), P.Text2, 14));
         right.Add(Ui.IconBtn("↯", () => SpeedSheet([p]), L.S("speed"), P.Text2, 14));
 
         var card = Ui.Card(Ui.Row(left, Ui.H(6, right.ToArray())), new Thickness(12, 10), isActive ? P.Lerp(P.Surface, P.Success, 0.08) : null);
@@ -353,18 +370,8 @@ public class ServersPage : IPage
 
     public static string Key(ProfileItemModel p) => $"{p.ConfigType}:{p.Address}:{p.Port}:{Ui.CleanName(p.Remarks)}";
 
-    public static int Delay(ProfileItemModel p)
-    {
-        var k = Key(p);
-        if (p.Delay > 0)
-        {
-            if (!SatraState.I.Pings.TryGetValue(k, out var old) || old != p.Delay) { SatraState.I.Pings[k] = p.Delay; _pingDirty = true; }
-            return p.Delay;
-        }
-        if (p.Delay < 0) return p.Delay;
-        return SatraState.I.Pings.TryGetValue(k, out var v) ? v : 0;
-    }
+    /// <summary>Fresh in-memory result only; never falls back to a persisted old ping.</summary>
+    public static int Delay(ProfileItemModel p) => PingEngine.I.Ms(p.IndexId);
 
-    private static bool _pingDirty;
-    public static void FlushPings() { if (_pingDirty) { _pingDirty = false; SatraState.Save(); } }
+    public static void FlushPings() { }
 }

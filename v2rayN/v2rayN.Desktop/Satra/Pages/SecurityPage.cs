@@ -105,7 +105,7 @@ public class SecurityPage : IPage
                     {
                         CheckState.Pass => 1.0, CheckState.Warn => 0.5, CheckState.Unknown => 0.6, _ => 0
                     })));
-                    _score.Text = partial.ToString();
+                    _score.Text = partial == 0 ? "…" : partial.ToString();
                     Paint();
                 });
             });

@@ -18,6 +18,7 @@ public class HomePage : IPage
     private readonly TextBlock _timer = Ui.T("", 13.5, FontWeight.Medium, P.Text2);
     private readonly ContentControl _server = new();
     private ContentControl _homePing = new();
+    private readonly ContentControl _speedHost = new();
     private readonly TextBlock _down = Ui.Num(Ui.T("0 B/s", 22, FontWeight.Bold)), _up = Ui.Num(Ui.T("0 B/s", 22, FontWeight.Bold));
     private readonly TextBlock _downTot = Ui.Caption(""), _upTot = Ui.Caption("");
     private readonly TextBlock _today = Ui.Num(Ui.T("", 15, FontWeight.SemiBold));
@@ -36,6 +37,7 @@ public class HomePage : IPage
         _updateBtnHost.Child = updateBtn;
         var head = Ui.Row(Ui.Title(L.S("home")), Ui.H(8,
             _updateBtnHost,
+            Ui.Btn(L.S("speed_home"), Ui.Kind.Ghost, () => ServersPage.SpeedInline(_speedHost, [null], compact: true), "↯", 13),
             Ui.IconBtn("⟳", () => _ = SatraCore.I.UpdateSubsAsync(), L.S("update_all")),
             Ui.Btn(L.S("add"), Ui.Kind.Tinted, () => _ = AddAsync(), "+")));
         _root.Children.Add(head);
@@ -77,10 +79,14 @@ public class HomePage : IPage
         statCard.MaxWidth = 640;
         Grid.SetRow(statCard, 5);
         _root.Children.Add(statCard);
+        _speedHost.MaxWidth = 640;
+        Grid.SetRow(_speedHost, 5);
+        _root.Children.Add(_speedHost);
+        _speedHost.PropertyChanged += (_, e) => { if (e.Property == ContentControl.ContentProperty) statCard.IsVisible = _routeHost.IsVisible = _speedHost.Content == null; };
 
         SatraCore.I.Speed += (_, _) => Dispatcher.UIThread.Post(UpdateSpeed);
         SatraCore.I.Ticked += () => Dispatcher.UIThread.Post(() => { var c = SatraCore.I; _timer.Text = c.Since is { } s ? (DateTime.Now - s).ToString(@"hh\:mm\:ss") : ""; });
-        SatraCore.I.Profiles.SpeedTestUpdated += () => Dispatcher.UIThread.Post(UpdateHomePing);
+        PingEngine.I.Changed += () => Dispatcher.UIThread.Post(UpdateHomePing);
     }
 
     private async Task AddAsync() => await SatraCore.I.AddFromClipboardAsync(await SatraShell.I.ClipboardText());
@@ -135,8 +141,9 @@ public class HomePage : IPage
     private void UpdateSpeed()
     {
         var c = SatraCore.I;
-        _down.Text = Ui.Speed(c.DownRate);
-        _up.Text = Ui.Speed(c.UpRate);
+        var on = c.Phase == ConnPhase.On;
+        _down.Text = Ui.Speed(on ? c.DownRate : 0);
+        _up.Text = Ui.Speed(on ? c.UpRate : 0);
         _downTot.Text = $"{L.S("session")} {Ui.Bytes(c.SessionDown)}";
         _upTot.Text = $"{L.S("session")} {Ui.Bytes(c.SessionUp)}";
         var d = SatraState.I.Today();
@@ -191,7 +198,7 @@ public class HomePage : IPage
     {
         var a = SatraCore.I.Active;
         if (a == null || a.IndexId != _pingTargetId) return;
-        _homePing.Content = ServersPage.PingPill(ServersPage.Delay(a));
+        _homePing.Content = ServersPage.PingPill(ServersPage.Delay(a), PingEngine.I.Get(a.IndexId).Status == PingStatus.Pending);
     }
 
     private static readonly string[] Modes = ["tun", "proxy", "socks"];
@@ -263,8 +270,8 @@ public class HomePage : IPage
         var q = QuotaPill(a.Subid);
         if (q != null) meta.Add(q);
         // Fresh ContentControl each rebuild — reusing _homePing under a new parent crashes Avalonia.
-        _homePing = new ContentControl { Content = ServersPage.PingPill(ServersPage.Delay(a)) };
-        var pingBtn = Ui.IconBtn("◎", () => _ = SatraCore.I.RunTestAsync(ESpeedActionType.Realping, [a]), L.S("ping"), P.Text2, 15);
+        _homePing = new ContentControl { Content = ServersPage.PingPill(ServersPage.Delay(a), PingEngine.I.Get(a.IndexId).Status == PingStatus.Pending) };
+        var pingBtn = Ui.IconBtn("◎", () => _ = PingEngine.I.PingOneAsync(a), L.S("ping"), P.Text2, 15);
         var right = Ui.H(8, _homePing, pingBtn, Ui.Btn(L.S("servers"), Ui.Kind.Ghost, () => SatraShell.I.Go("servers"), size: 13));
         return Ui.Enter(Ui.Card(Ui.Row(left, right), new Thickness(18, 12)));
     }

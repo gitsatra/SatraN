@@ -112,7 +112,7 @@ public class ConnectOrb : Control
             }
         }
         // ambient glow
-        var glowA = _phase switch { ConnPhase.On => 0.28 + 0.08 * Math.Sin(t * 2.2), ConnPhase.Connecting => 0.22, ConnPhase.Failed => 0.25, _ => 0.06 };
+        var glowA = _phase switch { ConnPhase.On => 0.28 + 0.08 * Math.Sin(t * 2.2), ConnPhase.Connecting => 0.22, ConnPhase.Failed => 0.25, _ => 0.13 };
         var glow = new RadialGradientBrush
         {
             GradientStops = { new GradientStop(Color.FromArgb((byte)(glowA * 255), col.R, col.G, col.B), 0), new GradientStop(Color.FromArgb(0, col.R, col.G, col.B), 1) },
@@ -131,7 +131,7 @@ public class ConnectOrb : Control
                 EndPoint = new RelativePoint(0.5, 1, RelativeUnit.Relative),
                 GradientStops = { new GradientStop(top, 0), new GradientStop(bottom, 1) },
             };
-            ctx.DrawEllipse(disc, new Pen(P.B(P.Lerp(Color.Parse("#2A2A30"), col, _fill * 0.6)), 1.5), c, r, r);
+            ctx.DrawEllipse(disc, new Pen(P.B(P.Lerp(Color.Parse("#2A2A30"), col, Math.Max(_phase == ConnPhase.Off ? 0.45 : 0, _fill * 0.6))), _phase == ConnPhase.Off ? 2 : 1.5), c, r, r);
 
             // spinner arc while connecting / disconnecting
             if (_phase is ConnPhase.Connecting or ConnPhase.Disconnecting)
@@ -143,7 +143,7 @@ public class ConnectOrb : Control
             }
 
             // power glyph
-            var gcol = _fill > 0.5 ? Colors.White : P.Lerp(Color.Parse("#B4B4BD"), Colors.White, _fill * 2);
+            var gcol = _fill > 0.5 ? Colors.White : P.Lerp(_phase == ConnPhase.Off ? P.Lerp(Color.Parse("#B4B4BD"), P.Accent, 0.7) : Color.Parse("#B4B4BD"), Colors.White, _fill * 2);
             var gp = new Pen(P.B(gcol), 7, lineCap: PenLineCap.Round);
             var gr = r * 0.34;
             DrawArc(ctx, c, gr, 32, 296, gp);
