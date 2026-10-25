@@ -12,9 +12,41 @@ if (-not (Test-Path (Join-Path $Src 'SatraN.exe'))) {
   else { throw "SatraN.exe not found next to this script." }
 }
 $Dest = Join-Path $env:ProgramFiles 'SatraN'
-Write-Host "Installing SatraN to $Dest ..."
-if (Test-Path $Dest) { Remove-Item -Recurse -Force $Dest }
-Copy-Item -Recurse -Force $Src $Dest
+$Version = '__VERSION__'
+Write-Host "Installing SatraN $Version to $Dest ..."
+
+# 1) wait for the running app (it quits itself after starting this update) and its cores to exit — files must not be locked
+$deadline = (Get-Date).AddSeconds(20)
+do {
+  $running = Get-Process -ErrorAction SilentlyContinue | Where-Object { $_.Path -and $_.Path.StartsWith($Dest, [StringComparison]::OrdinalIgnoreCase) }
+  if (-not $running) { break }
+  Start-Sleep -Milliseconds 400
+} while ((Get-Date) -lt $deadline)
+$running | Stop-Process -Force -ErrorAction SilentlyContinue
+Start-Sleep -Milliseconds 500
+
+# 2) stage the new files next to the old ones, carry user data over (servers, subscriptions, settings, logs, rollbacks)
+$New = "$Dest.new"; $Old = "$Dest.old"
+if (Test-Path $New) { Remove-Item -Recurse -Force $New }
+Copy-Item -Recurse -Force $Src $New
+if (Test-Path $Dest) {
+  foreach ($d in 'guiConfigs','guiBackups','guiLogs','binConfigs','rollback') {
+    $from = Join-Path $Dest $d
+    if (Test-Path $from) { Copy-Item -Recurse -Force $from (Join-Path $New $d) }
+  }
+}
+
+# 3) atomic-ish swap with rollback if anything fails
+if (Test-Path $Old) { Remove-Item -Recurse -Force $Old -ErrorAction SilentlyContinue }
+try {
+  if (Test-Path $Dest) { Rename-Item $Dest $Old }
+  Rename-Item $New $Dest
+} catch {
+  Write-Warning "Install failed ($_) - restoring the previous version"
+  if ((-not (Test-Path $Dest)) -and (Test-Path $Old)) { Rename-Item $Old $Dest }
+  throw
+}
+Remove-Item -Recurse -Force $Old -ErrorAction SilentlyContinue
 
 $Exe = Join-Path $Dest 'SatraN.exe'
 $UninstallPs1 = Join-Path $Dest 'Uninstall-SatraN.ps1'
@@ -56,7 +88,7 @@ $U.Save()
 $Reg = 'HKLM:\Software\Microsoft\Windows\CurrentVersion\Uninstall\SatraN'
 New-Item -Path $Reg -Force | Out-Null
 Set-ItemProperty $Reg DisplayName 'SatraN'
-Set-ItemProperty $Reg DisplayVersion '1.1.9'
+Set-ItemProperty $Reg DisplayVersion $Version
 Set-ItemProperty $Reg Publisher 'Satra'
 Set-ItemProperty $Reg DisplayIcon $Exe
 Set-ItemProperty $Reg InstallLocation $Dest

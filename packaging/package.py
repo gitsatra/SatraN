@@ -6,7 +6,7 @@ usage: package.py <rid> <publish_dir> <xray_dir> <version> <out_dir>
 Produces: SatraN-<ver>-win-x64.zip, SatraN-<ver>-linux-x64.tar.gz + satran_<ver>_amd64.deb,
           SatraN-<ver>-osx-<arch>.app.zip (unsigned)
 """
-import os, sys, shutil, stat, tarfile, zipfile, subprocess, tempfile
+import os, re, sys, shutil, stat, tarfile, zipfile, subprocess, tempfile
 
 rid, pub, xray, ver, out = sys.argv[1:6]
 os.makedirs(out, exist_ok=True)
@@ -69,6 +69,9 @@ if rid.startswith("win"):
         src = os.path.join(win_dir, name)
         if os.path.exists(src):
             shutil.copy2(src, os.path.join(app, name))
+            if name.endswith(".ps1"):
+                dst = os.path.join(app, name)
+                open(dst, "w", newline="\r\n").write(open(dst, encoding="utf-8-sig").read().replace("__VERSION__", ver))
     zip_path = os.path.join(out, f"SatraN-{ver}-{rid}.zip")
     zipdir(app, zip_path, "SatraN")
     # SatraN-Setup: self-extracting archive when 7z is available; else a fat zip named like Setup.
@@ -79,6 +82,9 @@ if rid.startswith("win"):
     setup_proj = os.path.join(os.path.dirname(__file__), "windows", "SatraNSetup", "SatraNSetup.csproj")
     if os.path.exists(setup_proj):
         setup_out = os.path.join(work, "setup-pub")
+        prog = os.path.join(os.path.dirname(setup_proj), "Program.cs")
+        src_txt = open(prog).read()
+        open(prog, "w").write(re.sub(r'const string Version = "[^"]*";', f'const string Version = "{ver}";', src_txt))
         subprocess.check_call(["dotnet", "publish", setup_proj, "-c", "Release", "-o", setup_out])
         built = os.path.join(setup_out, "SatraN-Setup.exe")
         if os.path.exists(built):

@@ -15,23 +15,56 @@ static string? FindZip(string beside)
     return File.Exists(payload) ? payload : null;
 }
 
+// Satra Hub: the hostname sits behind a CDN front that some networks block — fall back to the origin IP (same TLS cert/SNI).
+static HttpClient Hub(bool origin)
+{
+    var h = new SocketsHttpHandler { ConnectTimeout = TimeSpan.FromSeconds(8) };
+    if (origin)
+        h.ConnectCallback = async (ctx, ct) =>
+        {
+            var host = ctx.DnsEndPoint.Host == "p.iivt.ir" ? "107.189.24.195" : ctx.DnsEndPoint.Host;
+            var s = new System.Net.Sockets.Socket(System.Net.Sockets.SocketType.Stream, System.Net.Sockets.ProtocolType.Tcp) { NoDelay = true };
+            try { await s.ConnectAsync(host, ctx.DnsEndPoint.Port, ct); return new System.Net.Sockets.NetworkStream(s, true); }
+            catch { s.Dispose(); throw; }
+        };
+    var c = new HttpClient(h) { Timeout = TimeSpan.FromMinutes(15) };
+    c.DefaultRequestHeaders.UserAgent.ParseAdd("SatraN-Setup/" + Version);
+    return c;
+}
+
 static async Task<string?> DownloadZipAsync(string destDir)
 {
+    const string B = "https://p.iivt.ir:2097/satra/dl/"; // releases repo is private; Satra Hub hosts the files
     var name = $"SatraN-{Version}-win-x64.zip";
-    var url = $"https://p.iivt.ir:2097/satra/dl/{Version}/{name}"; // releases repo is private; Satra Hub hosts the files
     var dest = Path.Combine(destDir, name);
-    Console.WriteLine("Downloading " + url);
-    using var http = new HttpClient { Timeout = TimeSpan.FromMinutes(15) };
-    http.DefaultRequestHeaders.UserAgent.ParseAdd("SatraN-Setup/" + Version);
-    using var resp = await http.GetAsync(url);
-    if (!resp.IsSuccessStatusCode)
+    foreach (var origin in new[] { false, true })
     {
-        Console.Error.WriteLine("Download failed: HTTP " + (int)resp.StatusCode);
-        return null;
+        try
+        {
+            using var http = Hub(origin);
+            // expected SHA-256 from the Hub manifest — never install an unverified package
+            string? sha = null;
+            try
+            {
+                using var doc = System.Text.Json.JsonDocument.Parse(await http.GetStringAsync(B + "latest.json"));
+                if (doc.RootElement.GetProperty("files").TryGetProperty(name, out var f)) sha = f.GetProperty("sha256").GetString();
+            }
+            catch { }
+            Console.WriteLine("Downloading " + B + Version + "/" + name + (origin ? " (direct)" : ""));
+            using var resp = await http.GetAsync(B + Version + "/" + name, HttpCompletionOption.ResponseHeadersRead);
+            if (!resp.IsSuccessStatusCode) { Console.Error.WriteLine("HTTP " + (int)resp.StatusCode); continue; }
+            await using (var fs = File.Create(dest)) await resp.Content.CopyToAsync(fs);
+            if (sha != null)
+            {
+                await using var rf = File.OpenRead(dest);
+                var got = Convert.ToHexString(await System.Security.Cryptography.SHA256.HashDataAsync(rf));
+                if (!got.Equals(sha, StringComparison.OrdinalIgnoreCase)) { Console.Error.WriteLine("Checksum mismatch"); File.Delete(dest); continue; }
+            }
+            return dest;
+        }
+        catch (Exception ex) { Console.Error.WriteLine(ex.Message); }
     }
-    await using var fs = File.Create(dest);
-    await resp.Content.CopyToAsync(fs);
-    return dest;
+    return null;
 }
 
 var exe = Environment.ProcessPath ?? "SatraN-Setup.exe";
