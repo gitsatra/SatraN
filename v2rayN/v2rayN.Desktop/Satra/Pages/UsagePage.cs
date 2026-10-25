@@ -1,7 +1,10 @@
+using Avalonia.Animation;
 using Avalonia.Layout;
 using Avalonia.Threading;
 using v2rayN.Desktop.Satra.Controls;
 using v2rayN.Desktop.Satra.Services;
+
+using ServiceLib.Satra;
 
 namespace v2rayN.Desktop.Satra.Pages;
 
@@ -20,11 +23,30 @@ public class UsagePage : IPage
     private char _topKind = 'c';
     private int _topDays = 7;
 
-    private void BuildTop()
+    private string _topSig = "";
+    private SlideSegmented _kindSeg = null!;
+    private readonly Border _topHost = new() { MinHeight = 120 };
+
+    /// History list (Configs / Apps / Sites). Rebuilt only when what it shows changes, so the page never jumps.
+    private void BuildTop(bool force = false)
     {
+        var q = _search.Text?.Trim() ?? "";
+        if (_topKind == 'c')
+        {
+            var per = UsageHistory.PerConfig(_topDays);
+            var sigC = $"c{_topDays}{q}{SatraCore.I.Active?.IndexId}" + string.Join(",", per.Select(kv => $"{kv.Key}{(kv.Value.Up + kv.Value.Down) >> 16}"));
+            if (!force && sigC == _topSig) return;
+            _topSig = sigC;
+            _top.Children.Clear();
+            BuildConfigs(per);
+            return;
+        }
+        var rows = UsageHistory.Top(_topKind, _topDays, q);
+        var blockedSig = string.Join(",", SatraState.I.Limits.Where(l => l.Enabled).SelectMany(l => l.Values));
+        var sig = $"{_topKind}{_topDays}{q}{blockedSig}{L.Lang}" + string.Join(",", rows.Select(r => $"{r.Name}{r.Bytes >> 16}"));
+        if (!force && sig == _topSig) return;
+        _topSig = sig;
         _top.Children.Clear();
-        if (_topKind == 'c') { BuildConfigs(); return; }
-        var rows = UsageHistory.Top(_topKind, _topDays, _search.Text);
         if (rows.Count == 0)
         {
             _top.Children.Add(new Border { Padding = new Thickness(16, 14), Child = Ui.Caption(L.S("usage_history_empty"), P.Text3) });
@@ -34,23 +56,130 @@ public class UsagePage : IPage
         var first = true;
         foreach (var (name, bytes) in rows)
         {
-            if (!first) _top.Children.Add(new Border { Height = 1, Background = P.B(P.Separator), Margin = new Thickness(14, 0, 0, 0) });
+            if (!first) _top.Children.Add(new Border { Height = 1, Background = P.B(P.Separator), Margin = new Thickness(_topKind == 'a' ? 60 : 14, 0, 0, 0) });
             first = false;
-            var key = _topKind == 'd' ? "host:" + name : name;
+            if (_topKind == 'a') { _top.Children.Add(AppRow(name, bytes, max)); continue; }
+            var key = "host:" + name;
             var blocked = SatraState.I.Limits.Any(l => l.Enabled && l.Values.Any(v => v.Equals(name, StringComparison.OrdinalIgnoreCase)));
             var btn = blocked
-                ? Ui.Btn(L.S(_topKind == 'd' ? "unblock_site" : "unblock_app"), Ui.Kind.Tinted, () => { UnblockProcess(key, name); BuildTop(); }, null, 12)
-                : Ui.Btn(L.S(_topKind == 'd' ? "block_site" : "block_app"), Ui.Kind.Ghost, () => { BlockProcess(key, name); BuildTop(); }, null, 12);
+                ? Ui.Btn(L.S("unblock_site"), Ui.Kind.Tinted, () => UnblockProcess(key, name), null, 12)
+                : Ui.Btn(L.S("block_site"), Ui.Kind.Ghost, () => BlockProcess(key, name), null, 12);
             _top.Children.Add(new Border { Padding = new Thickness(14, 10), Child = Ui.V(6,
-                Ui.Row(Ui.T(name, 13.5, FontWeight.SemiBold), Ui.H(10, Ui.T(Ui.Bytes(bytes), 13, FontWeight.Bold, P.Text2), btn)),
+                Ui.Row(Ui.H(10, SiteBadge(name), Ui.T(name, 13.5, FontWeight.SemiBold)), Ui.H(10, Ui.T(Ui.Bytes(bytes), 13, FontWeight.Bold, P.Text2), btn)),
                 Ui.Bar((double)bytes / max, blocked ? P.Danger : P.Accent, 4)) });
         }
     }
-    /// Usage per config/server (all modes), saved per day; names resolved from the current profile list.
-    private void BuildConfigs()
+
+    /// One app in history: icon + friendly name, ↓/↑, share bar; tap → destinations.
+    private Control AppRow(string name, long bytes, long max)
     {
-        var per = UsageHistory.PerConfig(_topDays);
-        var profiles = SatraCore.I.Profiles.ProfileItems.ToDictionary(p => p.IndexId ?? "", p => p);
+        var t = UsageHistory.AppTotals(name, _topDays);
+        var hosts = UsageHistory.AppHosts(name, _topDays);
+        var blocked = IsAppBlocked(name, name);
+        var title = Ui.T(AppIdentity.Cached(name)?.Name ?? UsageModel.Pretty(name), 14, FontWeight.SemiBold);
+        title.TextTrimming = TextTrimming.CharacterEllipsis;
+        var sub = Ui.Caption(Ui.Ltr($"{name}") + (hosts.Count > 0 ? " · " + string.Format(L.S("u_n_sites"), hosts.Count) : ""), P.Text3);
+        sub.TextWrapping = TextWrapping.NoWrap;
+        sub.TextTrimming = TextTrimming.CharacterEllipsis;
+        var right = Ui.V(2, Ui.T(Ui.Bytes(bytes), 13.5, FontWeight.Bold, blocked ? P.Danger : P.Text), Ui.Caption(Ui.Ltr($"↓ {Ui.Bytes(t.Down)}  ↑ {Ui.Bytes(t.Up)}"), P.Text3));
+        right.HorizontalAlignment = HorizontalAlignment.Right;
+        foreach (var c in right.Children.OfType<TextBlock>()) c.HorizontalAlignment = HorizontalAlignment.Right;
+        var chev = Ui.T("›", 20, FontWeight.Medium, P.Text3);
+        chev.VerticalAlignment = VerticalAlignment.Center;
+        if (L.Lang == "fa") chev.Text = "‹";
+        var g = new Grid { ColumnDefinitions = new ColumnDefinitions("Auto,*,Auto,Auto"), ColumnSpacing = 12 };
+        var icon = AppIcon(name, 34);
+        var mid = Ui.V(5, Ui.V(1, title, sub), Ui.Bar((double)bytes / max, blocked ? P.Danger : P.Accent, 4));
+        Grid.SetColumn(mid, 1); Grid.SetColumn(right, 2); Grid.SetColumn(chev, 3);
+        g.Children.Add(icon); g.Children.Add(mid); g.Children.Add(right); g.Children.Add(chev);
+        var row = new Border { Padding = new Thickness(14, 10), Background = Brushes.Transparent, Cursor = new Cursor(StandardCursorType.Hand), Child = g };
+        row.PointerEntered += (_, _) => row.Background = P.B(P.Fill);
+        row.PointerExited += (_, _) => row.Background = Brushes.Transparent;
+        row.PointerReleased += (_, _) => AppSheet(name);
+        _ = AppIdentity.GetAsync(name).ContinueWith(r => Dispatcher.UIThread.Post(() => { if (r.Result.Name.Length > 0) title.Text = r.Result.Name; }));
+        return row;
+    }
+
+    private static bool IsAppBlocked(string key, string name) =>
+        SatraState.I.Limits.Any(l => l.Enabled && l.Type == "process" && l.Values.Any(v =>
+            string.Equals(v, key, StringComparison.OrdinalIgnoreCase) || string.Equals(Path.GetFileName(v), name, StringComparison.OrdinalIgnoreCase)));
+
+    /// Rounded app icon (real icon when found, else a tinted letter badge); swaps in when it loads.
+    public static Control AppIcon(string name, double size)
+    {
+        var hue = unchecked((uint)name.ToLowerInvariant().Aggregate(17, (h, ch) => unchecked(h * 31 + ch))) % 6;
+        var tint = hue switch { 0 => P.Accent, 1 => P.Info, 2 => P.Success, 3 => P.Warning, 4 => Color.Parse("#A78BFA"), _ => Color.Parse("#F472B6") };
+        var letter = Ui.T(UsageModel.Pretty(name).FirstOrDefault(char.IsLetterOrDigit).ToString().ToUpperInvariant(), size * 0.44, FontWeight.Bold, tint);
+        letter.HorizontalAlignment = HorizontalAlignment.Center;
+        letter.VerticalAlignment = VerticalAlignment.Center;
+        var b = new Border { Width = size, Height = size, CornerRadius = new CornerRadius(size * 0.26), Background = P.B(tint, 0.16), ClipToBounds = true, Child = letter, VerticalAlignment = VerticalAlignment.Center };
+        void Set(AppIdentity.Info i)
+        {
+            if (i.Icon == null) return;
+            b.Background = Brushes.Transparent;
+            b.Child = new Image { Source = i.Icon, Width = size, Height = size, Stretch = Stretch.Uniform };
+        }
+        if (AppIdentity.Cached(name) is { } c) Set(c);
+        else _ = AppIdentity.GetAsync(name).ContinueWith(r => Dispatcher.UIThread.Post(() => Set(r.Result)));
+        return b;
+    }
+
+    private static Control SiteBadge(string host)
+    {
+        var t = Ui.T(host.FirstOrDefault(char.IsLetterOrDigit).ToString().ToUpperInvariant(), 11, FontWeight.Bold, P.Info);
+        t.HorizontalAlignment = HorizontalAlignment.Center;
+        t.VerticalAlignment = VerticalAlignment.Center;
+        return new Border { Width = 24, Height = 24, CornerRadius = new CornerRadius(7), Background = P.B(P.InfoSoft), Child = t };
+    }
+
+    /// App detail: totals, every destination it reached with MB per host, block/unblock.
+    private void AppSheet(string name)
+    {
+        var info = AppIdentity.Cached(name);
+        var t = UsageHistory.AppTotals(name, _topDays);
+        var hosts = UsageHistory.AppHosts(name, _topDays, 200);
+        string? path;
+        lock (SatraState.I.AppPaths) path = SatraState.I.AppPaths.GetValueOrDefault(name);
+        Control Tile(string l, string v, Color c) => new Border { Background = P.B(P.Fill), CornerRadius = Ui.RCtl, Padding = new Thickness(14, 10), Child = Ui.V(2, Ui.Caption(l, P.Text3), Ui.Num(Ui.T(v, 17, FontWeight.Bold, c))) };
+        var tiles = new UniformGrid { Rows = 1, ColumnSpacing = 10 };
+        tiles.Children.Add(Tile(L.S("download"), Ui.Bytes(t.Down), P.Text));
+        tiles.Children.Add(Tile(L.S("upload"), Ui.Bytes(t.Up), P.Text));
+        tiles.Children.Add(Tile(L.S("total"), Ui.Bytes(t.Total), P.Accent));
+        var head = Ui.H(14, AppIcon(name, 48), Ui.V(2, Ui.T(info?.Name ?? UsageModel.Pretty(name), 18, FontWeight.Bold),
+            Ui.Caption(Ui.Ltr(path ?? name), P.Text3), Ui.Caption(SpanText(), P.Text3)));
+        var list = new StackPanel();
+        if (hosts.Count == 0) list.Children.Add(new Border { Padding = new Thickness(14, 12), Child = Ui.Caption(L.S("u_no_hosts"), P.Text3) });
+        var max = Math.Max(1, hosts.FirstOrDefault()?.Total ?? 1);
+        var first = true;
+        foreach (var h in hosts)
+        {
+            if (!first) list.Children.Add(new Border { Height = 1, Background = P.B(P.Separator), Margin = new Thickness(14, 0, 0, 0) });
+            first = false;
+            var hn = Ui.T(Ui.Ltr(h.Host), 13, FontWeight.Medium);
+            hn.TextTrimming = TextTrimming.CharacterEllipsis;
+            list.Children.Add(new Border { Padding = new Thickness(14, 9), Child = Ui.V(5,
+                Ui.Row(hn, Ui.H(10, Ui.Caption(Ui.Ltr($"↓ {Ui.Bytes(h.Down)}  ↑ {Ui.Bytes(h.Up)}"), P.Text3), Ui.T(Ui.Bytes(h.Total), 13, FontWeight.Bold, P.Text2))),
+                Ui.Bar((double)h.Total / max, P.Info, 3)) });
+        }
+        var blocked = IsAppBlocked(path ?? name, name);
+        Action close = () => { };
+        var act = blocked
+            ? Ui.Btn(L.S("unblock_app"), Ui.Kind.Tinted, () => { UnblockProcess(path ?? name, name); close(); })
+            : Ui.Btn(L.S("block_app"), Ui.Kind.Danger, () => { BlockProcess(path ?? name, name); close(); });
+        var body = Ui.V(14, head, tiles, Ui.Row(Ui.Section(string.Format(L.S("u_hosts"), hosts.Count)), act),
+            new Border { Background = P.B(P.Surface), CornerRadius = Ui.RCard, ClipToBounds = true, Child = new ScrollViewer { MaxHeight = 380, Content = list } });
+        close = SatraShell.I.Sheet(L.S("u_app_detail"), body, 620);
+    }
+
+    internal void DevOpenApp(string name) => AppSheet(name);
+    internal void DevKind(int i) => _kindSeg.Select(i, true);
+
+    private string SpanText() => _topDays switch { 1 => L.S("today"), 7 => L.S("week"), _ => L.S("month") };
+
+    /// Usage per config/server (all modes), saved per day; names resolved from the current profile list.
+    private void BuildConfigs(Dictionary<string, (long Up, long Down)> per)
+    {
+        var profiles = SatraCore.I.Profiles.ProfileItems.GroupBy(p => p.IndexId ?? "").ToDictionary(g => g.Key, g => g.First());
         var q = _search.Text?.Trim() ?? "";
         var rows = per.Select(kv => (Id: kv.Key, kv.Value.Up, kv.Value.Down, P: profiles.GetValueOrDefault(kv.Key)))
             .Select(r => (r.Id, r.Up, r.Down, Name: r.P != null ? Ui.CleanName(r.P.Remarks) : L.S("deleted_config"), Sub: r.P != null ? ServersPage.SubName(r.P.Subid) : ""))
@@ -103,19 +232,24 @@ public class UsagePage : IPage
         sums.Children.Add(S(L.S("total"), _sumTotal, 2));
         sums.Children.Add(S(L.S("hours_per_day").Split(' ')[0], _sumHours, 3));
         _body.Children.Add(Ui.Card(sums, new Thickness(20, 16)));
-        _body.Children.Add(Ui.Card(Ui.V(12, Ui.Section(L.S("data_per_day")), _data), new Thickness(20, 16)));
-        _body.Children.Add(Ui.Card(Ui.V(12, Ui.Section(L.S("hours_per_day")), _hours), new Thickness(20, 16)));
         // Persisted history: top apps / top sites per day, week, month — with search and one-tap block
         _search = Ui.Input(L.S("search_usage"));
         _search.Width = 220;
         _search.TextChanged += (_, _) => BuildTop();
-        var kindSeg = SettingsPage.Segmented([L.S("top_configs"), L.S("top_apps"), L.S("top_sites")], 0, i => { _topKind = i switch { 0 => 'c', 1 => 'a', _ => 'd' }; BuildTop(); });
-        var spanSeg = SettingsPage.Segmented([L.S("today"), L.S("week"), L.S("month")], 1, i => { _topDays = i switch { 0 => 1, 1 => 7, _ => 30 }; BuildTop(); });
+        var kindSeg = _kindSeg = new SlideSegmented([L.S("top_configs"), L.S("top_apps"), L.S("top_sites")], 0, i => { _topKind = i switch { 0 => 'c', 1 => 'a', _ => 'd' }; SwapTop(); }) { Width = 330, HorizontalAlignment = HorizontalAlignment.Left };
+        var spanSeg = new SlideSegmented([L.S("today"), L.S("week"), L.S("month")], 1, i => { _topDays = i switch { 0 => 1, 1 => 7, _ => 30 }; SwapTop(); }) { Width = 260 };
         _body.Children.Add(Ui.Row(Ui.Section(L.S("usage_history")), _search));
-        _body.Children.Add(Ui.H(10, kindSeg, spanSeg));
-        _body.Children.Add(new Border { Background = P.B(P.Surface), CornerRadius = Ui.RCard, ClipToBounds = true, Child = _top });
+        _body.Children.Add(Ui.Row(kindSeg, spanSeg));
+        _topHost.Background = P.B(P.Surface);
+        _topHost.CornerRadius = Ui.RCard;
+        _topHost.ClipToBounds = true;
+        _topHost.Child = _top;
+        _top.Transitions = new Transitions { new DoubleTransition { Property = Visual.OpacityProperty, Duration = TimeSpan.FromMilliseconds(160) } };
+        _body.Children.Add(_topHost);
         _body.Children.Add(Ui.Section(L.S("live_apps")));
         _body.Children.Add(new Border { Background = P.B(P.Surface), CornerRadius = Ui.RCard, ClipToBounds = true, Child = _live });
+        _body.Children.Add(Ui.Card(Ui.V(12, Ui.Section(L.S("data_per_day")), _data), new Thickness(20, 16)));
+        _body.Children.Add(Ui.Card(Ui.V(12, Ui.Section(L.S("hours_per_day")), _hours), new Thickness(20, 16)));
         _body.Children.Add(Ui.Row(Ui.Section(L.S("local_limits")), Ui.Btn(L.S("add_limit"), Ui.Kind.Tinted, () => AddLimitSheet(), "+", 13)));
         _body.Children.Add(new Border { Background = P.B(P.Surface), CornerRadius = Ui.RCard, ClipToBounds = true, Child = _limits });
         _body.Children.Add(Ui.Caption(L.S("server_limits") + " → " + L.S("subs") + " · " + L.S("limits"), P.Text3));
@@ -127,6 +261,15 @@ public class UsagePage : IPage
         _liveTimer.Tick += (_, _) => _ = RefreshLiveAsync();
         _root.AttachedToVisualTree += (_, _) => { _liveTimer.Start(); _ = RefreshLiveAsync(); };
         _root.DetachedFromVisualTree += (_, _) => _liveTimer.Stop();
+    }
+
+    /// Switch the history list in place: keep the card's height while the new rows come in (no jump), soft fade.
+    private void SwapTop()
+    {
+        _topHost.MinHeight = Math.Max(120, _topHost.Bounds.Height);
+        _top.Opacity = 0.35;
+        BuildTop(true);
+        DispatcherTimer.RunOnce(() => { _top.Opacity = 1; _topHost.MinHeight = 120; }, TimeSpan.FromMilliseconds(170));
     }
 
     public void Refresh()
@@ -190,8 +333,12 @@ public class UsagePage : IPage
         }
     }
 
+    private string _liveSig = "";
     private void BuildLive(List<(string key, string name, ulong total, double bps, string? host)> rows)
     {
+        var sig = string.Join(",", rows.Select(r => $"{r.key}{(long)r.bps >> 12}{r.total >> 16}{r.host}")) + SatraState.I.Limits.Count;
+        if (sig == _liveSig) return;
+        _liveSig = sig;
         _live.Children.Clear();
         if (rows.Count == 0)
         {
@@ -215,11 +362,22 @@ public class UsagePage : IPage
                     ? Ui.Btn(L.S("unblock_app"), Ui.Kind.Tinted, () => UnblockProcess(key, name), null, 12)
                     : Ui.Btn(L.S("block_app"), Ui.Kind.Danger, () => BlockProcess(key, name), null, 12));
             var sub = r.host.IsNotEmpty() ? r.host! : (r.key.Contains(Path.DirectorySeparatorChar) || r.key.Contains('/') ? r.key : "");
-            _live.Children.Add(new Border
+            var isApp = !r.key.StartsWith("host:", StringComparison.OrdinalIgnoreCase) && r.name != "unknown";
+            if (isApp) AppIdentity.Remember(name, r.key.Contains('/') || r.key.Contains('\\') ? r.key : null);
+            var title = Ui.T(isApp ? AppIdentity.Cached(name)?.Name ?? name : name, 14, FontWeight.SemiBold);
+            title.TextTrimming = TextTrimming.CharacterEllipsis;
+            var subTb = Ui.Caption(Ui.Ltr(sub), P.Text3);
+            subTb.TextWrapping = TextWrapping.NoWrap;
+            subTb.TextTrimming = TextTrimming.CharacterEllipsis;
+            var left = Ui.H(12, isApp ? AppIcon(name, 30) : SiteBadge(name), Ui.V(2, title, string.IsNullOrEmpty(sub) ? new TextBlock() : subTb));
+            var row = new Border { Padding = new Thickness(14, 10), Background = Brushes.Transparent, Child = Ui.Row(left, right) };
+            if (isApp)
             {
-                Padding = new Thickness(14, 10),
-                Child = Ui.Row(Ui.V(2, Ui.T(name, 14, FontWeight.SemiBold), string.IsNullOrEmpty(sub) ? new TextBlock() : Ui.Caption(sub, P.Text3)), right),
-            });
+                row.Cursor = new Cursor(StandardCursorType.Hand);
+                row.PointerReleased += (_, e) => { if (e.Source is Visual v && v.FindAncestorOfType<Button>() == null) AppSheet(name); };
+                _ = AppIdentity.GetAsync(name).ContinueWith(t => Dispatcher.UIThread.Post(() => title.Text = t.Result.Name));
+            }
+            _live.Children.Add(row);
         }
     }
 
@@ -249,8 +407,9 @@ public class UsagePage : IPage
         SatraState.Save();
         _ = SatraCore.I.ApplyLocalLimitsAsync();
         _limSig = "";
+        _liveSig = "";
         BuildLimits();
-        BuildTop();
+        BuildTop(true);
         _ = RefreshLiveAsync();
     }
 
@@ -264,8 +423,9 @@ public class UsagePage : IPage
         SatraState.Save();
         _ = SatraCore.I.ApplyLocalLimitsAsync();
         _limSig = "";
+        _liveSig = "";
         BuildLimits();
-        BuildTop();
+        BuildTop(true);
         _ = RefreshLiveAsync();
     }
 

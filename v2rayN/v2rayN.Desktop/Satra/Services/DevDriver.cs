@@ -37,6 +37,22 @@ public static class DevDriver
         switch (c)
         {
             case "go": SatraShell.I.Go(arg); break;
+            case "useed": // QA: sample per-app usage so the Usage page can be screenshotted without a TUN session
+            {
+                const long M = 1 << 20;
+                var key = DateTime.Today.ToString("yyyy-MM-dd");
+                lock (SatraState.I.Usage)
+                {
+                    if (!SatraState.I.Usage.TryGetValue(key, out var ud)) SatraState.I.Usage[key] = ud = [];
+                    foreach (var (a, h, up, down) in new[] { ("chrome", "youtube.com", 12 * M, 840 * M), ("chrome", "google.com", 3 * M, 41 * M), ("chrome", "github.com", M, 22 * M), ("Telegram", "telegram.org", 18 * M, 230 * M), ("Telegram", "t.me", M, 9 * M), ("thunar", "gnome.org", 0L, 2 * M) })
+                        ServiceLib.Satra.UsageModel.AddApp(ud, a, h, up, down);
+                }
+                AppIdentity.Remember("chrome", "/opt/google/chrome/chrome");
+                AppIdentity.Remember("thunar", "/usr/bin/thunar");
+                break;
+            }
+            case "uapp": SatraShell.I.Go("usage"); (SatraShell.I.Page("usage") as Pages.UsagePage)?.DevOpenApp(arg); break;
+            case "ukind": (SatraShell.I.Page("usage") as Pages.UsagePage)?.DevKind(int.Parse(arg)); break;
             case "lang": AppManager.Instance.Config.UiItem.CurrentLanguage = arg; await ConfigHandler.SaveConfig(AppManager.Instance.Config); SatraTray.Relocalize(); if (SatraShell.I.Parent is ContentControl lcc) { var lw = SatraShell.I.Window; lcc.Content = null; lcc.Content = new SatraShell(lw); } break;
             case "shot":
                 await Task.Delay(300);

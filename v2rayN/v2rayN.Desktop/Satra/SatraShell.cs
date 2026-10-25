@@ -21,6 +21,7 @@ public class SatraShell : Grid
     private readonly StackPanel _nav = new() { Spacing = 4 };
     private readonly Border _connectGlow = new() { IsHitTestVisible = false, Opacity = 0 };
     private readonly Dictionary<string, IPage> _pages = [];
+    public IPage? Page(string key) => _pages.GetValueOrDefault(key);
     private readonly Dictionary<string, Border> _navItems = [];
     private string _current = "";
     private readonly List<Action> _sheets = [];

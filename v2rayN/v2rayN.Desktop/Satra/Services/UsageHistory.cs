@@ -1,3 +1,5 @@
+using ServiceLib.Satra;
+
 namespace v2rayN.Desktop.Satra.Services;
 
 /// <summary>
@@ -43,13 +45,14 @@ public static class UsageHistory
                 if (c.id == null || c.metadata == null) continue;
                 seen.Add(c.id);
                 Last.TryGetValue(c.id, out var prev);
-                var dB = (long)((c.upload >= prev.up ? c.upload - prev.up : 0) + (c.download >= prev.down ? c.download - prev.down : 0));
+                var dUp = (long)(c.upload >= prev.up ? c.upload - prev.up : 0);
+                var dDown = (long)(c.download >= prev.down ? c.download - prev.down : 0);
                 Last[c.id] = (c.upload, c.download);
-                if (dB <= 0) continue;
+                if (dUp + dDown <= 0) continue;
                 var app = AppName(c.metadata);
                 var site = Site(c.metadata);
-                if (app.Length > 0) d["a:" + app] = d.GetValueOrDefault("a:" + app) + dB;
-                if (site.Length > 0) d["d:" + site] = d.GetValueOrDefault("d:" + site) + dB;
+                AppIdentity.Remember(app, c.metadata.processPath);
+                lock (SatraState.I.Usage) UsageModel.AddApp(d, app, site, dUp, dDown);
             }
             foreach (var k in Last.Keys.Where(k => !seen.Contains(k)).ToList()) Last.Remove(k);
             if (++_n % 12 == 0) Prune();
@@ -62,18 +65,28 @@ public static class UsageHistory
     {
         var cut = DateTime.Today.AddDays(-92).ToString("yyyy-MM-dd");
         foreach (var k in SatraState.I.Usage.Keys.Where(k => string.CompareOrdinal(k, cut) < 0).ToList()) SatraState.I.Usage.Remove(k);
-        // keep each day bounded
-        foreach (var d in SatraState.I.Usage.Values.Where(v => v.Count > 600))
-            foreach (var k in d.Where(kv => kv.Key[0] is 'a' or 'd').OrderBy(kv => kv.Value).Take(d.Count - 500).Select(kv => kv.Key).ToList()) d.Remove(k);
+        lock (SatraState.I.Usage)
+            foreach (var d in SatraState.I.Usage.Values) UsageModel.Prune(d);
     }
+
+    private static List<Dictionary<string, long>> Span(int days)
+    {
+        var l = new List<Dictionary<string, long>>();
+        lock (SatraState.I.Usage)
+            for (var i = 0; i < days; i++)
+                if (SatraState.I.Usage.TryGetValue(DateTime.Today.AddDays(-i).ToString("yyyy-MM-dd"), out var d)) l.Add(new(d));
+        return l;
+    }
+
+    public static UsageModel.AppTotals AppTotals(string app, int days) => UsageModel.App(Span(days), app);
+    public static List<UsageModel.HostRow> AppHosts(string app, int days, int take = 50) => UsageModel.Hosts(Span(days), app, take);
 
     /// <summary>Top entries over the last <paramref name="days"/> days. kind: 'a' apps, 'd' sites.</summary>
     public static List<(string Name, long Bytes)> Top(char kind, int days, string? filter = null, int take = 30)
     {
         var acc = new Dictionary<string, long>(StringComparer.OrdinalIgnoreCase);
-        for (var i = 0; i < days; i++)
+        foreach (var d in Span(days))
         {
-            if (!SatraState.I.Usage.TryGetValue(DateTime.Today.AddDays(-i).ToString("yyyy-MM-dd"), out var d)) continue;
             foreach (var (k, v) in d)
                 if (k.Length > 2 && k[0] == kind) acc[k[2..]] = acc.GetValueOrDefault(k[2..]) + v;
         }

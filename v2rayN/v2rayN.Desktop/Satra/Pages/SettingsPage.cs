@@ -49,7 +49,16 @@ public class SettingsPage : IPage
                 Background = on ? P.B(P.Raised) : Brushes.Transparent,
                 Child = new TextBlock { Text = labels[i], FontSize = 13, FontWeight = on ? FontWeight.SemiBold : FontWeight.Medium, Foreground = P.B(on ? P.Text : P.Text2), HorizontalAlignment = HorizontalAlignment.Center, TextTrimming = TextTrimming.CharacterEllipsis },
             });
-            b.PointerReleased += (_, _) => pick(idx);
+            b.PointerReleased += (_, _) =>
+            {
+                // show the new selection immediately, even if the caller doesn't rebuild
+                foreach (var (c, j) in row.Children.OfType<Border>().Select((c, j) => (c, j)))
+                {
+                    c.Background = j == idx ? P.B(P.Raised) : Brushes.Transparent;
+                    if (c.Child is TextBlock t) { t.FontWeight = j == idx ? FontWeight.SemiBold : FontWeight.Medium; t.Foreground = P.B(j == idx ? P.Text : P.Text2); }
+                }
+                pick(idx);
+            };
             row.Children.Add(b);
         }
         return host;
