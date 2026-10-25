@@ -6,13 +6,24 @@ namespace v2rayN.Desktop.Satra.Services;
 public static class UpdNet
 {
     public const string HubDl = "https://p.iivt.ir:2097/satra/dl/";
+    /// <summary>Origin of the Hub, used when the CDN front is blocked on the user's network (same TLS cert/SNI).</summary>
+    public const string HubOrigin = "107.189.24.195";
     private static readonly HttpClient Direct = Make(null);
+    private static readonly HttpClient Origin = Make(null, true);
     private static HttpClient? _viaProxy;
     private static int _proxyPort;
 
-    private static HttpClient Make(IWebProxy? proxy)
+    private static HttpClient Make(IWebProxy? proxy, bool origin = false)
     {
-        var h = new HttpClientHandler { Proxy = proxy, UseProxy = proxy != null, AutomaticDecompression = DecompressionMethods.All };
+        var h = new SocketsHttpHandler { Proxy = proxy, UseProxy = proxy != null, AutomaticDecompression = DecompressionMethods.All, ConnectTimeout = TimeSpan.FromSeconds(7) };
+        if (origin)
+            h.ConnectCallback = async (ctx, ct) =>
+            {
+                var host = ctx.DnsEndPoint.Host == "p.iivt.ir" ? HubOrigin : ctx.DnsEndPoint.Host;
+                var s = new System.Net.Sockets.Socket(System.Net.Sockets.SocketType.Stream, System.Net.Sockets.ProtocolType.Tcp) { NoDelay = true };
+                try { await s.ConnectAsync(host, ctx.DnsEndPoint.Port, ct); return new System.Net.Sockets.NetworkStream(s, true); }
+                catch { s.Dispose(); throw; }
+            };
         var c = new HttpClient(h) { Timeout = TimeSpan.FromMinutes(15) };
         c.DefaultRequestHeaders.TryAddWithoutValidation("User-Agent", Identity.App);
         return c;
@@ -20,15 +31,18 @@ public static class UpdNet
 
     private static IEnumerable<HttpClient> Clients()
     {
-        yield return Direct;
-        if (SatraCore.I.Phase != ConnPhase.On) yield break;
-        var port = AppManager.Instance.GetLocalPort(EInboundProtocol.socks);
-        if (_viaProxy == null || _proxyPort != port)
+        if (SatraCore.I.Phase == ConnPhase.On)
         {
-            _viaProxy = Make(new WebProxy($"socks5://127.0.0.1:{port}"));
-            _proxyPort = port;
+            var port = AppManager.Instance.GetLocalPort(EInboundProtocol.socks);
+            if (_viaProxy == null || _proxyPort != port)
+            {
+                _viaProxy = Make(new WebProxy($"socks5://127.0.0.1:{port}"));
+                _proxyPort = port;
+            }
+            yield return _viaProxy;
         }
-        yield return _viaProxy;
+        yield return Direct;
+        yield return Origin;
     }
 
     public static async Task<string> GetStringAsync(string url, CancellationToken ct = default)

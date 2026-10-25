@@ -10,6 +10,7 @@ public class SettingsPage : IPage
     private readonly StackPanel _body = new() { Spacing = 10, Margin = new Thickness(0, 0, 0, 28), MaxWidth = 760, HorizontalAlignment = HorizontalAlignment.Left };
     private readonly StackPanel _nav = new() { Spacing = 2, Width = 200, Margin = new Thickness(0, 0, 24, 0) };
     private string _cat = "general";
+    public static string? DevCat;
     private static readonly (string Id, string Glyph, string Key)[] Cats =
     [
         ("general", "⚙", "cat_general"), ("connection", "⇄", "cat_connection"), ("sharing", "⇆", "lan_share"),
@@ -59,6 +60,7 @@ public class SettingsPage : IPage
 
     private void Build(bool force)
     {
+        if (DevCat != null) { _cat = DevCat; DevCat = null; }
         var st = SatraState.I;
         var ib0 = Cfg.Inbound.First();
         var lanOn0 = ib0.AllowLANConn && ib0.NewPort4LAN;

@@ -128,7 +128,7 @@ public class SubsPage : IPage
         _allBar.IsVisible = false;
         _list.Children.Add(_allBar);
         var search = Ui.Input(L.S("search_subs"));
-        search.MaxWidth = 360; search.HorizontalAlignment = HorizontalAlignment.Left; search.Margin = new Thickness(0, 14, 0, 0);
+        search.Width = 320; search.HorizontalAlignment = HorizontalAlignment.Left; search.Margin = new Thickness(0, 14, 0, 0);
         search.TextChanged += (_, _) => { _q = search.Text?.Trim() ?? ""; _ = BuildAsync(); };
         _root.RowDefinitions = new RowDefinitions("Auto,Auto,*");
         Grid.SetRow(search, 1);

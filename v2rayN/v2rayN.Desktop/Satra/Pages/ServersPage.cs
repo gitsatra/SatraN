@@ -24,6 +24,7 @@ public class ServersPage : IPage
 
     public ServersPage()
     {
+        Last = this;
         _root.Children.Add(Ui.Row(Ui.Title(L.S("servers")), Ui.H(8,
             Ui.Btn(L.S("ping_all"), Ui.Kind.Ghost, () => _ = PingAllAsync(), "◎", 13),
             Ui.Btn(L.S("speed_all"), Ui.Kind.Ghost, () => SpeedSheet(SatraCore.I.Profiles.ProfileItems.ToList()), "↯", 13),
@@ -71,6 +72,8 @@ public class ServersPage : IPage
     private CancellationTokenSource? _speedCts;
 
     /// <summary>Inline (same page, no popup) download-only speed test with a live gauge; results sorted fastest first.</summary>
+    public static ServersPage? Last;
+    public void DevSpeed(int n) => SpeedSheet(n < 0 ? SatraCore.I.Profiles.ProfileItems.Take(3).ToList() : [SatraCore.I.Profiles.ProfileItems[n]]);
     private void SpeedSheet(List<ProfileItemModel> list) => SpeedInline(_speedPanel, list, () => UpdatePingsInPlace());
 
     public static void SpeedInline(ContentControl host, IReadOnlyList<ProfileItemModel?> list, Action? after = null, bool compact = false)

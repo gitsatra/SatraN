@@ -59,6 +59,14 @@ public static class DevDriver
             case "connect": await SatraCore.I.ConnectAsync(); break;
             case "disconnect": await SatraCore.I.DisconnectAsync(); break;
             case "mode": SatraState.I.Mode = arg; SatraState.Save(); SatraShell.I.Go("home"); break;
+            case "speedui": SatraShell.I.Go("servers"); await Task.Delay(300); ServersPage.Last?.DevSpeed(int.Parse(arg)); break;
+            case "size":
+                var wh = arg.Split('x'); var win = SatraShell.I.Window;
+                win.WindowState = WindowState.Normal; win.Width = double.Parse(wh[0]); win.Height = double.Parse(wh[1]);
+                await Task.Delay(500); break;
+            case "scat": SettingsPage.DevCat = arg; SatraShell.I.Go("settings"); break;
+            case "upcheck": await AutoUpdater.RunAsync(true); break;
+            case "upstate": File.AppendAllText(Path.Combine(dir, "up.txt"), $"{DateTime.Now:HH:mm:ss} {AutoUpdater.State} {AutoUpdater.Found?.Version} {AutoUpdater.Progress:0.00} {AutoUpdater.Error}\n"); break;
             case "click":
                 // click a visible button by its text on the current page
                 var btn = SatraShell.I.GetVisualDescendants().OfType<Button>().FirstOrDefault(b => b.IsEffectivelyVisible && FindText(b)?.Contains(arg) == true);
