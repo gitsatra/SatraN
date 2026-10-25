@@ -46,6 +46,18 @@ public class SatraCore : ReactiveObject
         DispatcherTimer.Run(() => { Tick(); return true; }, TimeSpan.FromSeconds(1));
         DispatcherTimer.Run(() => { _ = AutoUpdateSubsAsync(); return true; }, TimeSpan.FromMinutes(15));
         SubFallback.Install();
+        // Home/tray render before the server list loads at startup; refresh once the active server actually appears/changes.
+        if (main.ProfilesViewModel?.ProfileItems is System.Collections.Specialized.INotifyCollectionChanged pc)
+        {
+            string? lastActive = null;
+            pc.CollectionChanged += (_, _) => Avalonia.Threading.Dispatcher.UIThread.Post(() =>
+            {
+                var id = Active?.IndexId;
+                if (id == lastActive) return;
+                lastActive = id;
+                Changed?.Invoke();
+            });
+        }
         DispatcherTimer.RunOnce(() => _ = AutoUpdateSubsAsync(true), TimeSpan.FromSeconds(4));
     }
 
