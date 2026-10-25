@@ -86,7 +86,13 @@ public static class SatraAppUpdate
             var dir = Path.Combine(Path.GetTempPath(), "SatraN-update");
             Directory.CreateDirectory(dir);
             var dest = Path.Combine(dir, fileName);
-            await UpdNet.DownloadAsync(url, dest, sha256, progress, ct);
+            try { await UpdNet.DownloadAsync(url, dest, sha256, progress, ct); }
+            catch (Exception) when (!ct.IsCancellationRequested && url.StartsWith(UpdNet.HubDl, StringComparison.Ordinal))
+            {
+                // Hub unreachable/stalled from this network: same file from the public GitHub release (same sha256)
+                var ver = url[UpdNet.HubDl.Length..].Split('/')[0];
+                await UpdNet.DownloadAsync($"https://github.com/{GitHubRepo}/releases/download/v{ver}/{fileName}", dest, sha256, progress, ct);
+            }
             return (true, dest, null);
         }
         catch (Exception ex)

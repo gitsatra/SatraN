@@ -70,17 +70,21 @@ public static class UpdNet
             var part = dest + ".part";
             try
             {
-                using (var resp = await c.GetAsync(url, HttpCompletionOption.ResponseHeadersRead, ct))
+                // stall watchdog: a filtered route can keep a socket open with no data forever; give up after 25 s idle
+                using var stall = CancellationTokenSource.CreateLinkedTokenSource(ct);
+                stall.CancelAfter(TimeSpan.FromSeconds(25));
+                using (var resp = await c.GetAsync(url, HttpCompletionOption.ResponseHeadersRead, stall.Token))
                 {
                     resp.EnsureSuccessStatusCode();
                     var total = resp.Content.Headers.ContentLength;
-                    await using var input = await resp.Content.ReadAsStreamAsync(ct);
+                    await using var input = await resp.Content.ReadAsStreamAsync(stall.Token);
                     await using var output = File.Create(part);
                     var buf = new byte[1 << 16];
                     long got = 0;
                     int n;
-                    while ((n = await input.ReadAsync(buf, ct)) > 0)
+                    while ((n = await input.ReadAsync(buf, stall.Token)) > 0)
                     {
+                        stall.CancelAfter(TimeSpan.FromSeconds(25));
                         await output.WriteAsync(buf.AsMemory(0, n), ct);
                         got += n;
                         progress?.Report((got, total));
