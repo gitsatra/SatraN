@@ -204,6 +204,11 @@ public class CoreManager
                 _processService = null;
             }
 
+            if (ServiceLib.Satra.TunHelper.Active)
+            {
+                await ServiceLib.Satra.TunHelper.StopAsync();
+            }
+
             if (_processPreService != null)
             {
                 await _processPreService.StopAsync();
@@ -247,6 +252,14 @@ public class CoreManager
             var result = await CoreConfigHandler.GenerateClientConfig(preContext, fileName);
             if (result.Success)
             {
+                // Satra: privileged helper (installed once, like OpenVPN) -> no password/UAC on connect.
+                if (preContext.IsTunEnabled && preCoreType == ECoreType.sing_box && await ServiceLib.Satra.TunHelper.AvailableAsync())
+                {
+                    var (ok, err) = await ServiceLib.Satra.TunHelper.StartAsync(await File.ReadAllTextAsync(fileName));
+                    await UpdateFunc(!ok, ok ? "TUN started by SatraN Helper" : $"TUN helper: {err}");
+                    if (!ok) TunFailed?.Invoke(err ?? "");
+                    return;
+                }
                 var coreInfo = CoreInfoManager.Instance.GetCoreInfo(preCoreType);
                 var proc = await RunProcess(coreInfo, Global.CorePreConfigFileName, true, true, preContext.IsTunEnabled);
                 if (proc is null)
@@ -254,9 +267,21 @@ public class CoreManager
                     return;
                 }
                 _processPreService = proc;
+                // Satra: auto-rollback on the fallback path too: no connectivity within ~10 s -> tear TUN down.
+                if (preContext.IsTunEnabled && !await ServiceLib.Satra.TunHelper.ConnectivityOkAsync(TimeSpan.FromSeconds(10)))
+                {
+                    await _processPreService.StopAsync();
+                    _processPreService.Dispose();
+                    _processPreService = null;
+                    await UpdateFunc(true, "TUN rollback: no connectivity within 10 s");
+                    TunFailed?.Invoke("rollback");
+                }
             }
         }
     }
+
+    /// <summary>Satra: raised when TUN could not be brought up (helper rejected/rolled back); the UI disconnects.</summary>
+    public static Action<string>? TunFailed { get; set; }
 
     private async Task UpdateFunc(bool notify, string msg)
     {

@@ -1,10 +1,13 @@
-#Requires -RunAsAdministrator
+﻿#Requires -RunAsAdministrator
 <#
 .SYNOPSIS
   Fully remove SatraN: Program Files, Start Menu, Apps & Features entry, and user data.
 #>
 $ErrorActionPreference = 'Continue'
 Write-Host 'Uninstalling SatraN...'
+
+& sc.exe stop SatraNHelper 2>$null | Out-Null
+& sc.exe delete SatraNHelper 2>$null | Out-Null
 
 # Stop app + cores that may lock files under Program Files
 foreach ($n in @('SatraN', 'xray', 'sing-box', 'singbox')) {

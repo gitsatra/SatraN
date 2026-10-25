@@ -1,0 +1,22 @@
+[Unit]
+Description=SatraN Helper (privileged TUN service, like OpenVPN)
+After=network.target
+
+[Service]
+Type=simple
+ExecStart=/opt/satran/SatraN --helper
+Restart=on-failure
+RestartSec=2
+RuntimeDirectory=satran
+RuntimeDirectoryMode=0755
+Environment=HOME=/run/satran DOTNET_CLI_TELEMETRY_OPTOUT=1 DOTNET_gcServer=0
+NoNewPrivileges=yes
+ProtectSystem=full
+ProtectHome=read-only
+PrivateTmp=yes
+CapabilityBoundingSet=CAP_NET_ADMIN CAP_NET_RAW CAP_NET_BIND_SERVICE CAP_DAC_READ_SEARCH CAP_KILL
+KillMode=mixed
+TimeoutStopSec=8
+
+[Install]
+WantedBy=multi-user.target

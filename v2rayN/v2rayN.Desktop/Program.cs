@@ -13,6 +13,11 @@ internal class Program
     [STAThread]
     public static void Main(string[] args)
     {
+        if (args.Any(a => a.StartsWith("--helper")))
+        {
+            Environment.Exit(v2rayN.Desktop.Satra.Services.HelperHost.Run(args));
+            return;
+        }
         if (OnStartup(args) == false)
         {
             Environment.Exit(0);

@@ -184,7 +184,13 @@ elif rid.startswith("linux"):
     os.makedirs(os.path.join(root, "etc/apt/apt.conf.d"), exist_ok=True)
     with open(os.path.join(root, "etc/apt/apt.conf.d/99satran"), "w") as f:
         f.write('// SatraN apt repo is reached by IP; its certificate is for the Hub domain\nAcquire::https::107.189.24.195::Verify-Host "false";\n')
+    # Privileged TUN helper (systemd, root): connect never asks for a password
+    os.makedirs(os.path.join(root, "lib/systemd/system"), exist_ok=True)
+    shutil.copy2(os.path.join(os.path.dirname(__file__), "satran-helper.service"), os.path.join(root, "lib/systemd/system/satran-helper.service"))
     os.makedirs(os.path.join(root, "DEBIAN"))
+    with open(os.path.join(root, "DEBIAN/prerm"), "w") as f:
+        f.write("#!/bin/sh\nif [ \"$1\" = remove ] && command -v systemctl >/dev/null 2>&1; then systemctl disable --now satran-helper.service >/dev/null 2>&1 || true; fi\nexit 0\n")
+    os.chmod(os.path.join(root, "DEBIAN/prerm"), 0o755)
     with open(os.path.join(root, "DEBIAN/postinst"), "w") as f:
         f.write("""#!/bin/sh
 set -e
@@ -209,6 +215,19 @@ for g in geoip.dat geosite.dat; do
   ln -sfn "/opt/satran/bin/$g" "/opt/satran/bin/xray/$g"
   ln -sfn "/opt/satran/bin/$g" "/opt/satran/bin/sing_box/$g" 2>/dev/null || true
 done
+# Helper ACL: the installing (desktop) user may use the helper; group "satran" members too.
+mkdir -p /etc/satran
+touch /etc/satran/helper.allow; chmod 644 /etc/satran/helper.allow
+getent group satran >/dev/null 2>&1 || groupadd -r satran 2>/dev/null || true
+U="${SUDO_USER:-}"
+[ -z "$U" ] && [ -n "${PKEXEC_UID:-}" ] && U=$(getent passwd "$PKEXEC_UID" | cut -d: -f1)
+[ -z "$U" ] && U=$(loginctl list-sessions --no-legend 2>/dev/null | awk '$3!="root"&&$3!=""{print $3; exit}')
+if [ -n "$U" ] && [ "$U" != root ] && ! grep -qx "$U" /etc/satran/helper.allow; then echo "$U" >> /etc/satran/helper.allow; fi
+if command -v systemctl >/dev/null 2>&1 && [ -d /run/systemd/system ]; then
+  systemctl daemon-reload || true
+  systemctl enable satran-helper.service >/dev/null 2>&1 || true
+  systemctl restart satran-helper.service || true
+fi
 command -v gtk-update-icon-cache >/dev/null 2>&1 && gtk-update-icon-cache -f -t /usr/share/icons/hicolor || true
 command -v update-desktop-database >/dev/null 2>&1 && update-desktop-database -q /usr/share/applications || true
 exit 0

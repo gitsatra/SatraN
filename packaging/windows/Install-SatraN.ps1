@@ -1,4 +1,4 @@
-#Requires -RunAsAdministrator
+﻿#Requires -RunAsAdministrator
 <#
 .SYNOPSIS
   Install SatraN into Program Files (admin). TUN works because the app manifest requests elevation at launch.
@@ -25,6 +25,10 @@ do {
 $running | Stop-Process -Force -ErrorAction SilentlyContinue
 Start-Sleep -Milliseconds 500
 
+# release files held by the helper service (it is re-registered below)
+& sc.exe stop SatraNHelper 2>$null | Out-Null
+Start-Sleep -Milliseconds 800
+
 # 2) stage the new files next to the old ones, carry user data over (servers, subscriptions, settings, logs, rollbacks)
 $New = "$Dest.new"; $Old = "$Dest.old"
 if (Test-Path $New) { Remove-Item -Recurse -Force $New }
@@ -49,6 +53,9 @@ try {
 Remove-Item -Recurse -Force $Old -ErrorAction SilentlyContinue
 
 $Exe = Join-Path $Dest 'SatraN.exe'
+# SatraN Helper: LocalSystem service + named pipe (ACL: SYSTEM/Admins/interactive user) -> TUN without UAC on connect
+$h = Start-Process -FilePath $Exe -ArgumentList '--helper-install' -Wait -PassThru -WindowStyle Hidden
+if ($h.ExitCode -ne 0) { Write-Warning "SatraN Helper service not registered (exit $($h.ExitCode)); TUN falls back to the elevated app." }
 $UninstallPs1 = Join-Path $Dest 'Uninstall-SatraN.ps1'
 Copy-Item -Force (Join-Path $Src 'Uninstall-SatraN.ps1') $UninstallPs1 -ErrorAction SilentlyContinue
 if (-not (Test-Path $UninstallPs1)) {
