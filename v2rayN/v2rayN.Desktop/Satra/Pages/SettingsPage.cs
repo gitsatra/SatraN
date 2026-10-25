@@ -14,7 +14,7 @@ public class SettingsPage : IPage
     private static readonly (string Id, string Glyph, string Key)[] Cats =
     [
         ("general", "⚙", "cat_general"), ("connection", "⇄", "cat_connection"), ("sharing", "⇆", "cat_sharing"),
-        ("updates", "↓", "updates"), ("advanced", "⌘", "advanced"), ("about", "S", "about"),
+        ("updates", "↓", "updates"), ("advanced", "⌘", "advanced"), ("about", "ⓘ", "about"),
     ];
     public Control View => _root;
     private bool _modeChanged;
@@ -26,6 +26,7 @@ public class SettingsPage : IPage
         // desktop layout: category sidebar on the left, the chosen section on the right
         var split = new Grid { ColumnDefinitions = new ColumnDefinitions("Auto,*"), Margin = new Thickness(0, 18, 0, 0) };
         split.Children.Add(_nav);
+        split.SizeChanged += (_, e) => { var narrow = e.NewSize.Width < 820; _nav.Width = narrow ? 180 : 240; _nav.Margin = new Thickness(0, 0, narrow ? 14 : 24, 0); };
         var sv = new ScrollViewer { Content = _body };
         Grid.SetColumn(sv, 1);
         split.Children.Add(sv);
@@ -161,7 +162,7 @@ public class SettingsPage : IPage
                 SatraShell.I.Go("settings");
             }
         });
-        lang.Width = 300;
+        lang.Width = 270;
         var devName = Ui.Input(L.S("this_device"), st.DeviceName);
         devName.Width = 220;
         devName.LostFocus += (_, _) =>

@@ -244,7 +244,11 @@ public static class Ui
             var ic = new Border { Width = 30, Height = 30, CornerRadius = new CornerRadius(9), Background = P.B(glyphColor ?? P.Accent, 0.16), Child = Icons.Make(glyph, 16, glyphColor ?? P.Accent), VerticalAlignment = VerticalAlignment.Top, Margin = new Thickness(0, 2, 0, 0) };
             ic.Child!.HorizontalAlignment = HorizontalAlignment.Center;
             ic.Child.VerticalAlignment = VerticalAlignment.Center;
-            content = H(12, ic, left);
+            var cg = new Grid { ColumnDefinitions = new ColumnDefinitions("Auto,*") };
+            ic.Margin = new Thickness(0, 2, 12, 0);
+            cg.Children.Add(ic);
+            Grid.SetColumn(left, 1); cg.Children.Add(left);
+            content = cg;
         }
         if (accessory != null) accessory.VerticalAlignment = VerticalAlignment.Top;
         var row = new Border { Padding = new Thickness(14, 11), Background = Brushes.Transparent, Child = Row(content, accessory ?? (onClick != null ? T("›", 18, FontWeight.Normal, P.Text3) : null)) };

@@ -303,6 +303,8 @@ public class HomePage : IPage
                 Cursor = new Cursor(StandardCursorType.Hand),
                 Child = Ui.V(4, Ui.H(8, Ui.T(glyph, 15, FontWeight.Normal, sel ? accent : P.Text3), title, dot), desc),
             };
+            if (tile.Child is StackPanel sp) { sp.VerticalAlignment = VerticalAlignment.Center; foreach (var c in ((StackPanel)sp.Children[0]).Children) c.VerticalAlignment = VerticalAlignment.Center; }
+            ToolTip.SetTip(tile, L.S(sub));
             tile.Transitions = new Avalonia.Animation.Transitions { new Avalonia.Animation.BrushTransition { Property = Border.BackgroundProperty, Duration = TimeSpan.FromMilliseconds(220) } };
             Avalonia.Automation.AutomationProperties.SetName(tile, L.S(ConnModes.Label(mode)));
             tile.PointerReleased += (_, _) => { if (SatraCore.I.Phase is ConnPhase.Connecting or ConnPhase.Disconnecting) return; _ = SatraCore.I.SetModeAsync(mode); };
