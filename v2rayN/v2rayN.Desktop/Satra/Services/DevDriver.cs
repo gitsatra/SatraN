@@ -82,6 +82,9 @@ public static class DevDriver
             case "setmode": await SatraCore.I.SetModeAsync(arg); break;
             case "profile": SatraShell.I.Go("home"); await Task.Delay(200); if (HomePage.Last != null) HomePage.Last.ActivateMode(arg); break;
             case "modeinfo": SatraShell.I.Go("home"); await Task.Delay(200); HomePage.ModeInfo(arg); break;
+            case "secopen": SecurityPage.Last?.DevOpen(arg); break;
+            case "sectop": SecurityPage.Last?.DevTop(); break;
+            case "secdump": if (SecurityPage.Last is { } sp) File.WriteAllLines(Path.Combine(dir, "sec.txt"), sp.Results.Select(r => $"{r.Cat} {r.Key} {r.State} {r.Points}/{r.Max} {r.Detail}").Prepend($"{DateTime.Now:HH:mm:ss} score={sp.LastScore}")); break;
             case "torbadge": SecurityPage.FocusTor = true; SatraShell.I.Go("security"); break;
             case "profileset": await SatraCore.I.SetProfileAsync(arg); break;
             case "toggle": await SatraCore.I.ToggleAsync(); break;

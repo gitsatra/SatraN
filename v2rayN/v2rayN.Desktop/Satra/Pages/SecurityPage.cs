@@ -32,6 +32,14 @@ public class SecurityPage : IPage
     public Control View => _root;
     public static SecurityPage? Last;
     public Task DevRun() => RunAsync();
+    /// QA: expand one row and scroll it to the top.
+    public void DevOpen(string key)
+    {
+        if (!_rows.TryGetValue(key, out var row)) return;
+        row.Open();
+        Avalonia.Threading.DispatcherTimer.RunOnce(() => { if (_sv != null && row.View.TranslatePoint(new Point(0, 0), _body) is { } pt) _sv.Offset = new Vector(0, Math.Max(0, pt.Y - 40)); }, TimeSpan.FromMilliseconds(250));
+    }
+    public void DevTop() { if (_sv != null) _sv.Offset = new Vector(0, 0); }
     public int? LastScore => _last;
     private bool _unreach;
     public IReadOnlyList<CheckResult> Results => _res;
@@ -227,6 +235,8 @@ public class SecurityPage : IPage
             grid.Children.Add(text);
             View = new Border { Padding = new Thickness(14, 12), Background = Brushes.Transparent, Cursor = new Cursor(StandardCursorType.Hand), Child = grid };
             View.PointerReleased += (_, _) => _more.IsVisible = !_more.IsVisible;
+        }
+        public void Open() { _more.IsVisible = true;
             if (_max == 0) _pts.Text = "";
         }
 
