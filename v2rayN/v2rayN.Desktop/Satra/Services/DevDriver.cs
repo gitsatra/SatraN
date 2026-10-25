@@ -81,6 +81,7 @@ public static class DevDriver
             case "homeqa": File.AppendAllText(Path.Combine(dir, "homeqa.txt"), $"{DateTime.Now:HH:mm:ss.f} {arg} {HomePage.Last?.DevFacts()}\n"); break;
             case "setmode": await SatraCore.I.SetModeAsync(arg); break;
             case "profile": SatraShell.I.Go("home"); await Task.Delay(200); if (HomePage.Last != null) HomePage.Last.ActivateMode(arg); break;
+            case "modeinfo": SatraShell.I.Go("home"); await Task.Delay(200); HomePage.ModeInfo(arg); break;
             case "profileset": await SatraCore.I.SetProfileAsync(arg); break;
             case "toggle": await SatraCore.I.ToggleAsync(); break;
             case "secrun": SatraShell.I.Go("security"); await Task.Delay(400); if (SecurityPage.Last != null) await SecurityPage.Last.DevRun(); break;

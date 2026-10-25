@@ -18,6 +18,8 @@ public static partial class L
         return En.TryGetValue(key, out var e) ? e : key;
     }
 
+    public static bool Has(string key) => W.ContainsKey(key) || Z.ContainsKey(key) || Y.ContainsKey(key) || X.ContainsKey(key) || En.ContainsKey(key);
+
     public static string F(string key, params object[] a) => string.Format(S(key), a);
 
     private static readonly Dictionary<string, string> En = new()

@@ -228,7 +228,7 @@ public class HomePage : IPage
         {
             ConnPhase.On => L.S("pw_connected"), ConnPhase.Connecting => L.S("pw_connecting"), ConnPhase.Disconnecting => L.S("pw_stopping"),
             ConnPhase.Failed => L.S("pw_retry"), _ => L.S("pw_connect"),
-        }, prof == "normal" ? L.S(ConnModes.Label(m)) : c.Phase == ConnPhase.On ? L.F("mode_on", L.S("mode_" + prof)) : $"{L.S(ConnModes.Label(m))} · {L.S("mode_" + prof)}");
+        }, prof == "normal" ? L.S(ConnModes.Label(m)) : c.Phase == ConnPhase.On ? ServiceLib.Satra.ProfileModes.Emoji(prof) + "  " + L.F("mode_on", L.S("mode_" + prof)) : $"{L.S(ConnModes.Label(m))} · {L.S("mode_" + prof)}");
         // once connected: measure the active config right away (auto ping, not user-started: no TUN notice)
         if (c.Phase == ConnPhase.On && _lastPhase != ConnPhase.On && c.Active is { } act) _ = PingEngine.I.PingOneAsync(act);
         _lastPhase = c.Phase;
@@ -517,20 +517,31 @@ public class HomePage : IPage
         {
             var sel = id == cur;
             var ok = ServiceLib.Satra.ProfileModes.Available(id, tun);
+            var mc = Color.Parse(ServiceLib.Satra.ProfileModes.Color(id));
+            var info = new Border
+            {
+                Width = 16, Height = 16, CornerRadius = Ui.RPill, Background = P.B(P.Lerp(P.Surface, mc, sel ? 0.35 : 0.18)),
+                Cursor = new Cursor(StandardCursorType.Help), VerticalAlignment = VerticalAlignment.Center,
+                Child = new TextBlock { Text = "!", FontSize = 10, FontWeight = FontWeight.Bold, Foreground = P.B(mc), HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center },
+            };
+            ToolTip.SetTip(info, L.F("mode_info", L.S("mode_" + id)));
+            Avalonia.Automation.AutomationProperties.SetName(info, L.F("mode_info", L.S("mode_" + id)));
+            info.PointerReleased += (_, e) => { e.Handled = true; ModeInfo(id); };
             var chip = new Border
             {
-                Height = 30, Padding = new Thickness(_density >= 3 ? 9 : 12, 0), CornerRadius = Ui.RPill,
-                Background = P.B(sel ? P.Lerp(P.Surface, P.Accent, 0.16) : P.Surface),
-                BorderBrush = P.B(sel ? P.Lerp(P.Surface, P.Accent, 0.6) : P.Separator), BorderThickness = new Thickness(1),
+                Height = 30, Padding = new Thickness(_density >= 3 ? 8 : 10, 0, 7, 0), CornerRadius = Ui.RPill,
+                Background = P.B(sel ? P.Lerp(P.Surface, mc, 0.18) : P.Surface),
+                BorderBrush = P.B(sel ? P.Lerp(P.Surface, mc, 0.65) : P.Separator), BorderThickness = new Thickness(1),
                 Cursor = new Cursor(ok ? StandardCursorType.Hand : StandardCursorType.Arrow), Opacity = ok ? 1 : 0.42,
-                Child = Ui.H(6, Ui.T(glyph, 11.5, FontWeight.Normal, sel ? P.Accent : P.Text3), Ui.T(L.S("mode_" + id), 12.5, sel ? FontWeight.SemiBold : FontWeight.Medium, sel ? P.Text : P.Text2)),
+                Child = Ui.H(6, Ui.T(ServiceLib.Satra.ProfileModes.Emoji(id), 12, FontWeight.Normal, sel ? mc : P.Text3), Ui.T(L.S("mode_" + id), 12.5, sel ? FontWeight.SemiBold : FontWeight.Medium, sel ? P.Text : P.Text2), info),
             };
             if (chip.Child is StackPanel sp) foreach (var k in sp.Children) k.VerticalAlignment = VerticalAlignment.Center;
             ToolTip.SetTip(chip, ok ? L.S("mode_" + id + "_d") : L.S("gate_tun") + " — " + L.S("mode_gate_d"));
             Avalonia.Automation.AutomationProperties.SetName(chip, L.S("mode_" + id));
             chip.Transitions = new Avalonia.Animation.Transitions { new Avalonia.Animation.BrushTransition { Property = Border.BackgroundProperty, Duration = TimeSpan.FromMilliseconds(220) } };
-            chip.PointerReleased += (_, _) =>
+            chip.PointerReleased += (_, e) =>
             {
+                if (e.Handled) return;
                 if (!ok) { SatraCore.I.Notify(L.S("gate_tun")); return; }
                 if (id == ServiceLib.Satra.ProfileModes.Normalize(SatraState.I.Profile)) return;
                 ActivateMode(id);
@@ -547,7 +558,10 @@ public class HomePage : IPage
         var tun = SatraState.I.Mode == ConnModes.Tun;
         var changes = ServiceLib.Satra.ProfileModes.Changes(id, tun);
         LastActivation = id + ":" + string.Join(",", changes.Select(c => c.key));
+        var mcol = Color.Parse(ServiceLib.Satra.ProfileModes.Color(id));
         var title = Ui.T(L.F("mode_applying", L.S("mode_" + id)), 15, FontWeight.SemiBold);
+        var badge = new Border { Width = 34, Height = 34, CornerRadius = Ui.RPill, Background = P.B(P.Lerp(P.Raised, mcol, 0.25)), Child = new TextBlock { Text = ServiceLib.Satra.ProfileModes.Emoji(id), FontSize = 17, HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center } };
+        title.VerticalAlignment = VerticalAlignment.Center;
         var list = new StackPanel { Spacing = 7, Margin = new Thickness(0, 10, 0, 0) };
         var rows = new List<(Border tick, Control row)>();
         foreach (var (key, arg) in changes)
@@ -568,9 +582,9 @@ public class HomePage : IPage
         var card = new Border
         {
             Width = 340, Padding = new Thickness(22, 18), CornerRadius = new CornerRadius(20), Background = P.B(P.Raised),
-            BorderBrush = P.B(P.Separator), BorderThickness = new Thickness(1), BoxShadow = BoxShadows.Parse("0 24 60 0 #AA000000"),
+            BorderBrush = P.B(P.Lerp(P.Raised, mcol, 0.45)), BorderThickness = new Thickness(1), BoxShadow = BoxShadows.Parse("0 24 60 0 #AA000000"),
             HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center, IsHitTestVisible = false,
-            Child = Ui.V(0, title, list, foot), Opacity = 0,
+            Child = Ui.V(0, Ui.H(12, badge, title), list, foot), Opacity = 0,
             RenderTransform = TransformOperations.Parse("scale(0.96)"),
             Transitions = new Avalonia.Animation.Transitions
             {
@@ -586,14 +600,59 @@ public class HomePage : IPage
             DispatcherTimer.RunOnce(() =>
             {
                 row.Opacity = 1;
-                DispatcherTimer.RunOnce(() => { tick.Background = P.B(P.Success); if (tick.Child is TextBlock t) t.Opacity = 1; }, TimeSpan.FromMilliseconds(160));
+                DispatcherTimer.RunOnce(() => { tick.Background = P.B(mcol); if (tick.Child is TextBlock t) t.Opacity = 1; }, TimeSpan.FromMilliseconds(160));
             }, TimeSpan.FromMilliseconds(260 + i * 200));
         }
         var end = 260 + rows.Count * 200 + 250;
-        DispatcherTimer.RunOnce(() => { title.Text = L.F("mode_on", L.S("mode_" + id)); title.Foreground = P.B(P.Success); }, TimeSpan.FromMilliseconds(end));
+        DispatcherTimer.RunOnce(() => { title.Text = L.F("mode_on", L.S("mode_" + id)); title.Foreground = P.B(mcol); }, TimeSpan.FromMilliseconds(end));
         DispatcherTimer.RunOnce(() => { card.Opacity = 0; card.RenderTransform = TransformOperations.Parse("scale(0.98)"); }, TimeSpan.FromMilliseconds(end + 1500));
         DispatcherTimer.RunOnce(() => _host?.Children.Remove(card), TimeSpan.FromMilliseconds(end + 1850));
         _ = SatraCore.I.SetProfileAsync(id);
+    }
+
+    /// "!" panel: every setting the overlay really writes (ProfileModes.Details mirrors Apply), its value and why.
+    public static string? LastInfo; // QA
+    public static void ModeInfo(string id)
+    {
+        var tun = SatraState.I.Mode == ConnModes.Tun;
+        var mc = Color.Parse(ServiceLib.Satra.ProfileModes.Color(id));
+        var det = ServiceLib.Satra.ProfileModes.Details(id, tun);
+        LastInfo = id + ":" + string.Join(",", det.Select(d => d.Key));
+        var head = Ui.H(12,
+            new Border { Width = 44, Height = 44, CornerRadius = Ui.RPill, Background = P.B(P.Lerp(P.Surface, mc, 0.25)), Child = new TextBlock { Text = ServiceLib.Satra.ProfileModes.Emoji(id), FontSize = 22, HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center } },
+            Ui.V(2, Ui.T(L.S("mode_" + id), 17, FontWeight.SemiBold, mc), Ui.Caption(L.S("mode_" + id + "_d"), P.Text2)));
+        var list = new StackPanel();
+        var first = true;
+        foreach (var d in det)
+        {
+            if (!first) list.Children.Add(new Border { Height = 1, Background = P.B(P.Separator), Margin = new Thickness(14, 0) });
+            first = false;
+            var (ak, ac) = d.State switch { ServiceLib.Satra.ProfileModes.Act.On => ("act_on", P.Success), ServiceLib.Satra.ProfileModes.Act.Off => ("act_off", P.Text2), _ => ("act_set", mc) };
+            var why = Ui.T(L.S(d.Why), 12.5, FontWeight.Normal, P.Text2); why.TextWrapping = TextWrapping.Wrap;
+            var val = Ui.T(Ui.Ltr(d.Value), 11, FontWeight.Normal, P.Text3); val.FontFamily = new FontFamily("monospace"); val.TextWrapping = TextWrapping.Wrap;
+            list.Children.Add(new Border { Padding = new Thickness(14, 11), Child = Ui.V(4, Ui.Row(Ui.T(L.S(d.Key), 13.5, FontWeight.SemiBold), Ui.Pill(L.S(ak), ac, P.Lerp(P.Surface, ac, 0.16), 10.5)), val, why) });
+        }
+        if (det.Count == 0) list.Children.Add(new Border { Padding = new Thickness(14, 14), Child = Ui.T(L.S("mode_info_none"), 13, FontWeight.Normal, P.Text2) });
+        Control PcCard(string kind, Color col, string glyph)
+        {
+            var sp = new StackPanel { Spacing = 8 };
+            sp.Children.Add(Ui.T(L.S("mode_" + kind + "s"), 12, FontWeight.SemiBold, col));
+            for (var i = 1; L.Has($"{kind}_{id}_{i}"); i++)
+            {
+                var t = Ui.T(L.S($"{kind}_{id}_{i}"), 12.5, FontWeight.Normal, P.Text); t.TextWrapping = TextWrapping.Wrap;
+                var g = Ui.T(glyph, 12, FontWeight.Bold, col); g.Width = 14;
+                var row = new DockPanel(); DockPanel.SetDock(g, Dock.Left); row.Children.Add(g); row.Children.Add(t); sp.Children.Add(row);
+            }
+            return new Border { Background = P.B(P.Lerp(P.Surface, col, 0.07)), BorderBrush = P.B(P.Lerp(P.Surface, col, 0.3)), BorderThickness = new Thickness(1), CornerRadius = Ui.RCard, Padding = new Thickness(14, 12), Child = sp };
+        }
+        var pc = new Grid { ColumnDefinitions = new ColumnDefinitions("*,10,*") };
+        var pros = PcCard("pro", P.Success, "+"); var cons = PcCard("con", P.Warning, "−");
+        Grid.SetColumn(cons, 2); pc.Children.Add(pros); pc.Children.Add(cons);
+        var kids = new List<Control> { head, pc, Ui.Section(L.S("mode_settings")), new Border { Background = P.B(P.Surface), CornerRadius = Ui.RCard, ClipToBounds = true, Child = list } };
+        if (!tun && ServiceLib.Satra.ProfileModes.Details(id, true).Count > det.Count) kids.Add(Ui.Caption(L.S("mode_info_tun"), P.Text3));
+        if (!ServiceLib.Satra.ProfileModes.Available(id, tun)) kids.Add(Ui.Caption(L.S("gate_tun"), P.Warning));
+        var note = Ui.Caption(L.S("mode_info_note"), P.Text3); note.TextWrapping = TextWrapping.Wrap; kids.Add(note);
+        SatraShell.I.Sheet(L.F("mode_info", L.S("mode_" + id)), new ScrollViewer { MaxHeight = 520, Content = Ui.V(12, kids.ToArray()) }, 520);
     }
 
     private static Control? QuotaPill(string? subId)

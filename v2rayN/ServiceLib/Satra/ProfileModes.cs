@@ -34,10 +34,64 @@ public static class ProfileModes
                 if (tun) { l.Add(("ch_stack", "mixed")); l.Add(("ch_mtu", "1500")); }
                 break;
             case Eco:
-                l.Add(("ch_ads", null)); l.Add(("ch_mux_on", null)); l.Add(("ch_quic_block", null)); l.Add(("ch_probe_slow", null));
+                l.Add(("ch_ads", null)); l.Add(("ch_mux_on", null)); l.Add(("ch_quic_block", null));
                 break;
         }
         if (l.Count == 0) l.Add(("ch_none", null));
+        return l;
+    }
+
+    /// <summary>Colour identity (dark-theme friendly, Apple system palette) and emoji per mode (MODES-SPEC.md).</summary>
+    public static string Color(string mode) => Normalize(mode) switch
+    {
+        Game => "#BF5AF2", Secure => "#0A84FF", Fortress => "#FF453A", Stream => "#FF375F", Eco => "#30D158", _ => "#8E9BB0",
+    };
+    public static string Emoji(string mode) => Normalize(mode) switch
+    {
+        Game => "🎮", Secure => "🛡️", Fortress => "🏰", Stream => "🎬", Eco => "🌿", _ => "🌐",
+    };
+
+    public enum Act { On, Off, Set }
+    /// <summary>One real setting the overlay changes: label key, state, exact value written to the core config, reason key.</summary>
+    public sealed record Detail(string Key, Act State, string Value, string Why);
+
+    /// <summary>Exactly what <see cref="Apply"/> writes, for the "!" info panel. Keep in sync with Apply.</summary>
+    public static List<Detail> Details(string mode, bool tun)
+    {
+        mode = Normalize(mode);
+        var l = new List<Detail>();
+        switch (mode)
+        {
+            case Game:
+                l.Add(new("md_mux", Act.Off, "mux.enabled=false", "why_game_mux"));
+                l.Add(new("md_sniff", Act.Set, "sniffing.routeOnly=true", "why_game_sniff"));
+                l.Add(new("md_dstrat", Act.Set, "domainStrategy=AsIs", "why_game_dstrat"));
+                l.Add(new("md_dns_fb", Act.Off, "dns.disableFallback=true · cache on", "why_game_dns"));
+                l.Add(new("md_quic", Act.On, "UDP/443 allowed", "why_game_quic"));
+                if (tun) { l.Add(new("md_stack", Act.Set, "stack=system", "why_game_stack")); l.Add(new("md_mtu", Act.Set, "mtu=1400", "why_game_mtu")); }
+                break;
+            case Secure:
+            case Fortress:
+                l.Add(new("md_dns_doh", Act.Set, "https://1.1.1.1/dns-query, https://8.8.8.8/dns-query", "why_sec_dns"));
+                l.Add(new("md_ipv4", Act.Set, "queryStrategy=UseIPv4 / ipv4_only", "why_sec_ipv6"));
+                l.Add(new("md_quic", Act.Off, "udp/443 → block", "why_sec_quic"));
+                l.Add(new("md_utls", Act.On, "fingerprint=chrome (if empty)", "why_sec_utls"));
+                l.Add(new("md_frag", Act.On, "fragment tlshello 100-200 / 10-20 ms (TLS, not Reality)", "why_sec_frag"));
+                l.Add(new("md_insecure", Act.Off, "allowInsecure=false", "why_sec_insecure"));
+                if (tun) l.Add(new("md_tun6", Act.Off, "tun address: IPv6 removed", "why_sec_ipv6"));
+                if (tun && mode == Fortress) l.Add(new("md_strict", Act.On, "strict_route=true", "why_fort_strict"));
+                break;
+            case Stream:
+                l.Add(new("md_mux", Act.Off, "mux.enabled=false", "why_stream_mux"));
+                l.Add(new("md_quic", Act.On, "UDP/443 allowed", "why_stream_quic"));
+                if (tun) { l.Add(new("md_stack", Act.Set, "stack=mixed", "why_stream_stack")); l.Add(new("md_mtu", Act.Set, "mtu=1500", "why_stream_mtu")); }
+                break;
+            case Eco:
+                l.Add(new("md_ads", Act.On, "geosite:category-ads-all → block", "why_eco_ads"));
+                l.Add(new("md_mux", Act.On, "mux concurrency=8 (not Vision/Reality)", "why_eco_mux"));
+                l.Add(new("md_quic", Act.Off, "udp/443 → block", "why_eco_quic"));
+                break;
+        }
         return l;
     }
 
