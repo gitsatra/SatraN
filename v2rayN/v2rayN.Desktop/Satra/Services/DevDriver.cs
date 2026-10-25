@@ -37,6 +37,8 @@ public static class DevDriver
         switch (c)
         {
             case "go": SatraShell.I.Go(arg); break;
+            case "adv": SatraState.I.Advanced = arg == "1"; SatraState.Save(); break;
+            case "advgrp": Pages.AdvancedSettings.DevOpen(arg); break;
             case "useed": // QA: sample per-app usage so the Usage page can be screenshotted without a TUN session
             {
                 const long M = 1 << 20;

@@ -198,46 +198,23 @@ public class SettingsPage : IPage
             Ui.ListRow(L.S("show_advanced"), L.S("simple_mode_hint"), Ui.Switch(st.Advanced, v => { st.Advanced = v; SatraState.Save(); Build(true); }), glyph: "⚙")));
         if (!st.Advanced) { _body.Children.Add(Ui.Caption(L.S("adv_off_d"), P.Text3)); return; }
         {
-            var ib = Cfg.Inbound.First();
-            var port = Ui.Input("10808", ib.LocalPort.ToString()); port.Width = 110;
-            port.LostFocus += async (_, _) =>
-            {
-                if (!int.TryParse(port.Text, out var p) || p < 1024 || p > 65000 || p == ib.LocalPort) { port.Text = ib.LocalPort.ToString(); return; }
-                ib.LocalPort = p; await ConfigHandler.SaveConfig(Cfg); await SatraCore.I.Main.Reload(); SatraCore.I.Notify(L.S("saved"));
-            };
-            async Task Save() { await ConfigHandler.SaveConfig(Cfg); await SatraCore.I.Main.Reload(); }
-            var levels = new[] { "warning", "info", "error", "none", "debug" };
-            var lvl = new ComboBox { ItemsSource = levels, SelectedIndex = Math.Max(0, Array.IndexOf(levels, Cfg.CoreBasicItem.Loglevel)), MinWidth = 120 };
-            lvl.SelectionChanged += async (_, _) => { Cfg.CoreBasicItem.Loglevel = levels[Math.Max(0, lvl.SelectedIndex)]; await Save(); };
-            var stacks = new[] { "gvisor", "system", "mixed" };
-            var stack = new ComboBox { ItemsSource = stacks, SelectedIndex = Math.Max(0, Array.IndexOf(stacks, Cfg.TunModeItem.Stack)), MinWidth = 120 };
-            stack.SelectionChanged += async (_, _) => { Cfg.TunModeItem.Stack = stacks[Math.Max(0, stack.SelectedIndex)]; await Save(); };
-            var mtu = Ui.Input("9000", Cfg.TunModeItem.Mtu.ToString()); mtu.Width = 110;
-            mtu.LostFocus += async (_, _) => { if (int.TryParse(mtu.Text, out var m) && m is >= 1280 and <= 9000 && m != Cfg.TunModeItem.Mtu) { Cfg.TunModeItem.Mtu = m; await Save(); } };
-            _body.Children.Add(Ui.Section(L.S("adv_core")));
-            _body.Children.Add(Ui.Group(
-                Ui.ListRow(L.S("adv_port"), L.S("adv_port_d"), port, glyph: "⌁"),
-                Ui.ListRow(L.S("adv_udp"), null, Ui.Switch(ib.UdpEnabled, async v => { ib.UdpEnabled = v; await Save(); }), glyph: "⇅"),
-                Ui.ListRow(L.S("adv_sniff"), L.S("adv_sniff_d"), Ui.Switch(ib.SniffingEnabled, async v => { ib.SniffingEnabled = v; await Save(); }), glyph: "◎"),
-                Ui.ListRow(L.S("adv_fragment"), L.S("adv_fragment_d"), Ui.Switch(Cfg.CoreBasicItem.EnableFragment, async v => { Cfg.CoreBasicItem.EnableFragment = v; await Save(); }), glyph: "✂"),
-                Ui.ListRow(L.S("adv_log"), null, lvl, glyph: "▤")));
-            _body.Children.Add(Ui.Section(L.S("mode_vpn") + " (TUN)"));
-            _body.Children.Add(Ui.Group(
-                Ui.ListRow(L.S("adv_stack"), null, stack, glyph: "≡"),
-                Ui.ListRow("MTU", null, mtu, glyph: "↔"),
-                Ui.ListRow(L.S("adv_strict"), L.S("adv_strict_d"), Ui.Switch(Cfg.TunModeItem.StrictRoute, async v => { Cfg.TunModeItem.StrictRoute = v; await Save(); }), glyph: "⛨"),
-                Ui.ListRow("IPv6", null, Ui.Switch(Cfg.TunModeItem.EnableIPv6Address, async v => { Cfg.TunModeItem.EnableIPv6Address = v; await Save(); }), glyph: "6")));
+            _body.Children.Add(Ui.Section(L.S("adv_engine_section")));
+            _body.Children.Add(AdvancedSettings.View(() => Build(true)));
             var m = SatraCore.I.Main;
             Control Open(string title, string glyph, ReactiveCommand<RxVoid, RxVoid> cmd) =>
-                Ui.ListRow(title, null, Ui.T("›", 18, FontWeight.Bold, P.Text3), () => cmd.Execute().Subscribe(_ => { }), glyph);
-            _body.Children.Add(Ui.Section(L.S("advanced")));
+                Ui.ListRow(title, null, Ui.T(L.Lang == "fa" ? "‹" : "›", 18, FontWeight.Bold, P.Text3), () => cmd.Execute().Subscribe(_ => { }), glyph);
+            _body.Children.Add(Ui.Section(L.S("adv_rules_section")));
             _body.Children.Add(Ui.Enter(Ui.Group(
                 Ui.ListRow(L.S("exceptions"), L.F("exceptions_d", st.ViaVpn.Count, st.Direct.Count), null, ExceptionsSheet, "⇄"),
-                Open(L.S("core_settings"), "⚙", m.OptionSettingCmd),
-                Open(L.S("dns"), "◎", m.DNSSettingCmd),
+                Ui.ListRow(L.S("logs"), L.S("adv_logs_d"), Ui.T(L.Lang == "fa" ? "‹" : "›", 18, FontWeight.Bold, P.Text3), () => SatraShell.I.Go("logs"), "▤"))));
+            _body.Children.Add(Ui.Section(L.S("adv_expert")));
+            _body.Children.Add(Ui.Caption(L.S("adv_expert_d"), P.Text3));
+            _body.Children.Add(Ui.Enter(Ui.Group(
                 Open(L.S("routing_rules"), "⇄", m.RoutingSettingCmd),
+                Open(L.S("dns") + " · JSON", "◎", m.DNSSettingCmd),
+                Open(L.S("core_settings"), "⚙", m.OptionSettingCmd),
                 Open(L.S("sub_settings"), "▣", m.SubSettingCmd),
-                Open(L.S("logs"), "▤", m.OpenTheFileLocationCmd))));
+                Open(L.S("adv_log_folder"), "▤", m.OpenTheFileLocationCmd))));
         }
     }
 
