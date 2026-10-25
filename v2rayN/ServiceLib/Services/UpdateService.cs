@@ -566,6 +566,19 @@ public partial class UpdateService(Config config, Func<bool, string, Task> updat
                         var tmpFileName = tmpFilePathDict[request.FilePath];
                         if (File.Exists(tmpFileName))
                         {
+                            // Satra: never replace a working geo .dat with a truncated/invalid download
+                            // (a broken geosite.dat makes Xray refuse to start in every mode).
+                            if (request.FilePath.EndsWith(".dat", StringComparison.OrdinalIgnoreCase))
+                            {
+                                HashSet<string>? codes = null;
+                                try { codes = ServiceLib.Satra.GeoSanitizer.ReadCodes(File.ReadAllBytes(tmpFileName)); } catch { }
+                                if (codes == null || codes.Count < 5)
+                                {
+                                    File.Delete(tmpFileName);
+                                    _ = UpdateFunc(false, $"Skipped invalid geo file {Path.GetFileName(request.FilePath)}");
+                                    continue;
+                                }
+                            }
                             File.Copy(tmpFileName, request.FilePath, true);
                             File.Delete(tmpFileName);
                         }
