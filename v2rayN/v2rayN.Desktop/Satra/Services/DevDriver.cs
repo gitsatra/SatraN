@@ -1,3 +1,4 @@
+using ServiceLib.Handler.Fmt;
 using System.Text.Json;
 using Avalonia.Media.Imaging;
 using v2rayN.Desktop.Satra.Pages;
@@ -86,6 +87,14 @@ public static class DevDriver
                     File.AppendAllText(Path.Combine(dir, "subs.txt"), $"{DateTime.Now:HH:mm:ss} {sb.Remarks} {sb.Url} n={n} err={st?.Error} fetched={st?.Fetched}\n");
                 }
                 break;
+            case "qrgen":
+                var pr = await Task.Run(() => AppManager.Instance.GetProfileItem(Nth(arg).IndexId));
+                var link = FmtHandler.GetShareUri(pr!)!.Replace("#", "#QR-");
+                File.WriteAllBytes(Path.Combine(dir, "qr.png"), QRCodeUtils.GenQRCode(link)!); break;
+            case "qrfile": await ServersPage.ImportQrFile(arg); break;
+            case "exportall": await ServersPage.ExportAll(); File.WriteAllText(Path.Combine(dir, "export.txt"), await SatraShell.I.ClipboardText() ?? ""); break;
+            case "dedup": await ServersPage.Dedup(); break;
+            case "dumpall": File.WriteAllLines(Path.Combine(dir, "servers.txt"), SatraCore.I.Profiles.ProfileItems.Select(p => $"{p.ConfigType} {p.Remarks} {p.Address}:{p.Port}")); break;
             case "dump": File.WriteAllLines(Path.Combine(dir, "servers.txt"), SatraCore.I.Profiles.ProfileItems.Select(p => $"{p.ConfigType} {p.Remarks} {p.Address}:{p.Port} {p.Network} {p.StreamSecurity}")); break;
             case "scat": SettingsPage.DevCat = arg; SatraShell.I.Go("settings"); break;
             case "upcheck": await AutoUpdater.RunAsync(true); break;

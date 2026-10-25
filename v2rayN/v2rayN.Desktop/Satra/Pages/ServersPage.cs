@@ -73,6 +73,11 @@ public class ServersPage : IPage
         var menu = new ContextMenu();
         menu.Items.Add(Mi(L.S("add_clip"), () => _ = AddAsync()));
         menu.Items.Add(Mi(L.S("ed_add") + "…", () => ServerEditor.Open()));
+        menu.Items.Add(Mi(L.S("qr_image") + "…", () => _ = ImportQrImage()));
+        menu.Items.Add(new Separator());
+        menu.Items.Add(Mi(L.S("export_all"), () => _ = ExportAll()));
+        menu.Items.Add(Mi(L.S("dedup"), () => _ = Dedup()));
+        menu.Items.Add(Mi(L.S("remove_dead"), () => _ = RemoveDead()));
         b.ContextMenu = menu;
         b.Click += (_, _) => menu.Open(b);
         return b;
@@ -139,6 +144,54 @@ public class ServersPage : IPage
         var prof = await Prof(p);
         await Do(c => ConfigHandler.RemoveServers(c, [prof]));
         SatraShell.I.Toast(L.S("cm_deleted"), L.S("undo"), () => _ = Do(async c => { prof.IndexId = ""; return await ConfigHandler.AddServer(c, prof); }));
+    }
+
+    private static async Task ImportQrImage()
+    {
+        var files = await SatraShell.I.Window.StorageProvider.OpenFilePickerAsync(new Avalonia.Platform.Storage.FilePickerOpenOptions
+        {
+            AllowMultiple = false,
+            FileTypeFilter = [new Avalonia.Platform.Storage.FilePickerFileType("Images") { Patterns = ["*.png", "*.jpg", "*.jpeg", "*.bmp", "*.webp"] }]
+        });
+        if (files.Count == 0) return;
+        var path = Avalonia.Platform.Storage.StorageProviderExtensions.TryGetLocalPath(files[0]);
+        if (path == null) return;
+        await ImportQrFile(path);
+    }
+
+    public static async Task ImportQrFile(string path)
+    {
+        var text = await Task.Run(() => QRCodeUtils.ParseBarcode(path));
+        if (string.IsNullOrEmpty(text)) { SatraShell.I.Toast(L.S("qr_none")); return; }
+        await SatraCore.I.AddFromClipboardAsync(text);
+    }
+
+    /// <summary>All share links (one per line) to the clipboard — backup or move to another device.</summary>
+    public static async Task ExportAll()
+    {
+        var ids = SatraCore.I.Profiles.ProfileItems.Select(x => x.IndexId).ToList();
+        var links = await Task.Run(() => ids.Select(id => AppManager.Instance.GetProfileItem(id).Result).Where(x => x != null).Select(x => FmtHandler.GetShareUri(x!)).Where(l => !string.IsNullOrEmpty(l)).ToList());
+        if (links.Count == 0) { SatraShell.I.Toast(L.S("ed_no_link")); return; }
+        await SatraShell.I.Copy(string.Join("\n", links));
+        SatraShell.I.Toast(L.F("exported_n", links.Count));
+    }
+
+    public static async Task Dedup()
+    {
+        var before = SatraCore.I.Profiles.ProfileItems.Count;
+        await Do(async c => (await ConfigHandler.DedupServerList(c, SatraCore.I.Profiles.ProfileItems.FirstOrDefault()?.Subid ?? "")).Item2);
+        SatraShell.I.Toast(L.F("removed_n", before - SatraCore.I.Profiles.ProfileItems.Count));
+    }
+
+    /// <summary>Removes servers whose last ping timed out (run "Ping all" first). Undo restores them.</summary>
+    public static async Task RemoveDead()
+    {
+        var dead = SatraCore.I.Profiles.ProfileItems.Where(p => PingEngine.I.Get(p.IndexId).Status == PingStatus.Timeout).ToList();
+        if (dead.Count == 0) { SatraShell.I.Toast(L.S("remove_dead_none")); return; }
+        var profs = new List<ProfileItem>();
+        foreach (var d in dead) profs.Add(await Prof(d));
+        await Do(c => ConfigHandler.RemoveServers(c, profs));
+        SatraShell.I.Toast(L.F("removed_n", profs.Count), L.S("undo"), () => _ = Do(async c => { foreach (var x in profs) { x.IndexId = ""; await ConfigHandler.AddServer(c, x); } return 0; }));
     }
 
     private async Task AddAsync() => await SatraCore.I.AddFromClipboardAsync(await SatraShell.I.ClipboardText());
