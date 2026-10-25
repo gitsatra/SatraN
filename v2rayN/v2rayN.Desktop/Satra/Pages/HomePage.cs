@@ -27,6 +27,7 @@ public class HomePage : IPage
     private string _lastServerKey = "";
     private string? _pingTargetId;
     private readonly Border _updateBtnHost = new() { IsVisible = false };
+    private readonly WorldMap _map = new() { Margin = new Thickness(-36, -28), ClipToBounds = true };
 
     private ScrollViewer? _scroll;
     /// Scrolls instead of overlapping when the window is short; the star row still centres the orb when there is room.
@@ -47,6 +48,8 @@ public class HomePage : IPage
             Ui.Btn(L.S("speed_home"), Ui.Kind.Ghost, () => ServersPage.SpeedInline(_speedHost, [SatraCore.I.Active], compact: true), "↯", 13),
             Ui.IconBtn("⟳", () => _ = SatraCore.I.UpdateSubsAsync(), L.S("update_all")),
             Ui.Btn(L.S("add"), Ui.Kind.Tinted, () => _ = AddAsync(), "+")));
+        Grid.SetRowSpan(_map, 6);
+        _root.Children.Add(_map); // first child = drawn behind everything
         _root.Children.Add(Ui.V(10, head, _updateBtnHost));
         AutoUpdater.Changed += PaintUpdate;
         PaintUpdate();
@@ -59,6 +62,8 @@ public class HomePage : IPage
         center.VerticalAlignment = VerticalAlignment.Center;
         center.HorizontalAlignment = HorizontalAlignment.Center;
         Grid.SetRow(center, 1);
+        _map.Avoid = _orb; _map.Band = center;
+        center.LayoutUpdated += (_, _) => _map.InvalidateVisual();
         _root.Children.Add(center);
 
         Grid.SetRow(_modeHost, 2);
@@ -173,6 +178,7 @@ public class HomePage : IPage
         if (rsig != _routeSig) { _routeSig = rsig; _routeHost.Content = SmartRoutingCard(); }
 
         var a = c.Active;
+        _map.Show(c.Phase == ConnPhase.On && a != null ? NetBadges.ExitCc(a) : null);
         // Rebuild card when server / connect state / smart changes — not on every ping tick
         var key = $"{a?.IndexId}|{c.Phase}|{(a != null ? NetBadges.ExitCc(a) : null)}|{SatraState.I.SmartConnect}|{L.Lang}";
         if (key != _lastServerKey)

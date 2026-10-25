@@ -13,7 +13,7 @@ public class SettingsPage : IPage
     public static string? DevCat;
     private static readonly (string Id, string Glyph, string Key)[] Cats =
     [
-        ("general", "⚙", "cat_general"), ("connection", "⇄", "cat_connection"), ("sharing", "⇆", "lan_share"),
+        ("general", "⚙", "cat_general"), ("connection", "⇄", "cat_connection"), ("sharing", "⇆", "cat_sharing"),
         ("updates", "↓", "updates"), ("advanced", "⌘", "advanced"), ("about", "S", "about"),
     ];
     public Control View => _root;
