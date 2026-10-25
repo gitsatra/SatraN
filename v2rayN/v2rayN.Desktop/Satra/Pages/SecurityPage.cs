@@ -21,7 +21,7 @@ public class SecurityPage : IPage
     private readonly Border _ring = new() { Width = 118, Height = 118, CornerRadius = new CornerRadius(59), BorderThickness = new Thickness(7) };
     private readonly StackPanel _rows = new() { Spacing = 0 };
     private readonly Button _run;
-    private bool _busy, _autoStarted;
+    private bool _busy;
     private int? _last;
     private readonly Border _gate = new() { Padding = new Thickness(24, 28), CornerRadius = new CornerRadius(14), Margin = new Thickness(0, 0, 0, 12) };
 
@@ -77,12 +77,8 @@ public class SecurityPage : IPage
     public void Refresh()
     {
         Paint();
-        if (Gate()) { _autoStarted = false; return; }
-        if (!_autoStarted && !_busy)
-        {
-            _autoStarted = true;
-            _ = RunAsync();
-        }
+        // manual only (battery/data): the scan runs when the user taps Run — never on its own
+        Gate();
     }
 
     private async Task RunAsync()
