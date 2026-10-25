@@ -203,8 +203,20 @@ public class SubsPage : IPage
     private readonly HashSet<string> _open = [];
     private string _q = "";
 
+    private readonly Dictionary<string, (ContentControl pill, ProfileItemModel p)> _pills = new();
+    private bool _pillHooked;
+    private void HookPills()
+    {
+        if (_pillHooked) return; _pillHooked = true;
+        PingEngine.I.Changed += () => Dispatcher.UIThread.Post(() =>
+        {
+            foreach (var (pill, p) in _pills.Values) pill.Content = ServersPage.PingPill(ServersPage.Delay(p), PingEngine.I.Get(p.IndexId).Status == PingStatus.Pending);
+        });
+    }
+
     private async Task BuildAsync(bool force = false)
     {
+        HookPills();
         if (_building) { _again = true; return; }
         _building = true;
         try { do { _again = false; await BuildCoreAsync(force); } while (_again); } finally { _building = false; }
@@ -215,7 +227,7 @@ public class SubsPage : IPage
         var st = SatraState.I;
         st.Subs.TryGetValue(s.Id, out var m);
         var n = SatraCore.I.Profiles.ProfileItems.Count(p => p.Subid == s.Id);
-        var pings = _open.Contains(s.Id) ? string.Join(",", SatraCore.I.Profiles.ProfileItems.Where(p => p.Subid == s.Id).Select(p => PingEngine.I.Ms(p.IndexId ?? ""))) : "";
+        var pings = ""; // v1.9: pings update their pill in place (no card rebuild while pinging)
         return $"{s.Remarks}{s.AutoUpdateInterval}{s.Enabled}{s.Url}{s.Sort}{n}{_updating.Contains(s.Id)}{_open.Contains(s.Id)}{pings}{st.Hub.ContainsKey(s.Id)}{L.Lang}"
             + (m == null ? "" : $"{m.Fetched}{m.Error}{m.Up + m.Down}{m.Total}{m.Expire}{m.Title}{m.Announce}{m.RenewUrl}{m.SupportUrl}{m.HubBase}");
     }
@@ -287,14 +299,15 @@ public class SubsPage : IPage
         {
             var id = p.IndexId ?? "";
             use.TryGetValue(id, out var u);
+            var pill = new ContentControl { Content = ServersPage.PingPill(ServersPage.Delay(p), PingEngine.I.Get(id).Status == PingStatus.Pending) };
+            _pills[id] = (pill, p);
             var right = Ui.H(8,
-                Ui.Caption(u.Up + u.Down > 0 ? Ui.Ltr($"↓ {Ui.Bytes(u.Down)}  ↑ {Ui.Bytes(u.Up)}") : "", P.Text3),
-                ServersPage.PingPill(ServersPage.Delay(p), PingEngine.I.Get(id).Status == PingStatus.Pending));
+                Ui.Caption(u.Up + u.Down > 0 ? Ui.Ltr($"↓ {Ui.Bytes(u.Down)}  ↑ {Ui.Bytes(u.Up)}") : "", P.Text3), pill);
             var name = Ui.T((p.IndexId == SatraCore.I.Active?.IndexId ? "● " : "") + Ui.CleanName(p.Remarks), 13, FontWeight.Medium);
             name.TextTrimming = TextTrimming.CharacterEllipsis;
             rows.Children.Add(new Border { Padding = new Thickness(10, 6), Child = Ui.Row(name, right) });
         }
-        var pingAll = Ui.Btn(L.S("ping"), Ui.Kind.Ghost, () => _ = PingEngine.I.PingAllAsync(items).ContinueWith(_ => Dispatcher.UIThread.Post(() => _ = BuildAsync())), "◎", 12);
+        var pingAll = Ui.Btn(L.S("ping"), Ui.Kind.Ghost, () => _ = PingGuard.All(items), "◎", 12);
         return new Border { Background = P.B(P.Fill), CornerRadius = Ui.RCtl, Padding = new Thickness(6), Child = Ui.V(4, rows, pingAll) };
     }
 
@@ -380,7 +393,7 @@ public class SubsPage : IPage
         }
         actions.Add(Ui.Btn(_open.Contains(s.Id) ? "▴ " + L.S("servers") : "▾ " + L.S("servers"), Ui.Kind.Ghost, () =>
         {
-            if (!_open.Remove(s.Id)) { _open.Add(s.Id); _ = PingEngine.I.PingAllAsync(SatraCore.I.Profiles.ProfileItems.Where(p => p.Subid == s.Id).ToList()).ContinueWith(_ => Dispatcher.UIThread.Post(() => _ = BuildAsync())); }
+            if (!_open.Remove(s.Id)) { _open.Add(s.Id); _ = PingGuard.All(SatraCore.I.Profiles.ProfileItems.Where(p => p.Subid == s.Id).ToList()); }
             _ = BuildAsync();
         }, null, 13));
         actions.Add(Ui.IconBtn("↑", () => _ = MoveAsync(s, -1), L.S("move_up"), P.Text3, 13));

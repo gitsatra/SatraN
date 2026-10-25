@@ -73,6 +73,8 @@ public class SatraState
     public string Mode { get; set; } = ServiceLib.Satra.ConnModes.Default;
     /// <summary>v1.9 connection profile overlay id (ServiceLib.Satra.ProfileModes; MODES-SPEC.md).</summary>
     public string Profile { get; set; } = "normal";
+    /// <summary>Remembered answer to the TUN ping notice: "" ask, "anyway", "pause".</summary>
+    public string PingChoice { get; set; } = "";
     /// <summary>Start the core on the selected config when the app opens (ports ready without pressing Connect).</summary>
     public bool AutoStart { get; set; } = true;
     public bool SmartRouting { get; set; } = true;

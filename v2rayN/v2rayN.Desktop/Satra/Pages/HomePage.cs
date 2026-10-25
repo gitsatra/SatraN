@@ -13,7 +13,13 @@ public class HomePage : IPage
     private readonly ContentControl _routeHost = new() { MaxWidth = 640 };
     private string _modeSig = "";
     private string _routeSig = "";
-    private readonly ConnectOrb _orb = new() { Width = 136, Height = 136, HorizontalAlignment = HorizontalAlignment.Center };
+    private readonly ConnectOrb _orb = new() { Width = 136, Height = 136, HorizontalAlignment = HorizontalAlignment.Center, IsVisible = false };
+    private readonly PowerSwitch _power = new();
+    private readonly ContentControl _powerPing = new() { VerticalAlignment = VerticalAlignment.Center, Width = 72, HorizontalContentAlignment = HorizontalAlignment.Center };
+    private readonly StackPanel _modesStrip = new() { Orientation = Orientation.Horizontal, Spacing = 6, HorizontalAlignment = HorizontalAlignment.Center };
+    private string _stripSig = "";
+    private ConnPhase _lastPhase = ConnPhase.Off;
+    private Border? _secBtn;
     private readonly TextBlock _status = Ui.T("", 24, FontWeight.Bold);
     private readonly ContentControl _ports = new() { HorizontalAlignment = HorizontalAlignment.Center };
     private string _portsSig = "";
@@ -73,14 +79,16 @@ public class HomePage : IPage
         _density = d;
         var orb = d switch { 0 => 136, 1 => 112, 2 or 3 => 96, _ => 84 };
         _orb.Width = _orb.Height = orb;
+        if (d <= 1) _power.SetSize(268, 68); else if (d <= 3) _power.SetSize(248, 60); else _power.SetSize(232, 54);
+        _modesStrip.Spacing = d >= 3 ? 4 : 6;
         _root.Margin = d >= 2 ? new Thickness(32, 18, 32, 14) : new Thickness(36, 28, 36, 24);
         _center.Margin = d >= 2 ? new Thickness(0, 4, 0, 10) : new Thickness(0, 12, 0, 18);
         _spark.IsVisible = d == 0;
         foreach (var t in _tileDescs) t.IsVisible = d < 1;
         if (_smartCaption != null) _smartCaption.IsVisible = d < 2;
         if (_statCard != null) _statCard.IsVisible = d < 3 && _speedHost.Content == null;
-        _miniSpeed.IsVisible = d >= 3 && SatraCore.I.Phase == ConnPhase.On;
-        _hint.MaxLines = d >= 4 ? 1 : 2;
+        _miniSpeed.IsVisible = d >= 3; _miniSpeed.Opacity = SatraCore.I.Phase == ConnPhase.On ? 1 : 0;
+        _hint.MaxLines = d >= 4 ? 1 : 2; _hint.MinHeight = d >= 4 ? 18 : 36;
         _modeHost.Margin = new Thickness(0, 0, 0, d >= 2 ? 10 : 18);
         _server.Margin = new Thickness(0, 0, 0, d >= 2 ? 8 : 14);
     }
@@ -106,15 +114,22 @@ public class HomePage : IPage
 
         _status.HorizontalAlignment = _hint.HorizontalAlignment = _timer.HorizontalAlignment = HorizontalAlignment.Center;
         _orb.Clicked += () => _ = SatraCore.I.ToggleAsync();
+        _power.Clicked += () => _ = SatraCore.I.ToggleAsync();
+        _status.IsVisible = false; // the switch carries the state label now (kept for QA facts)
         _hint.TextWrapping = TextWrapping.Wrap; _hint.TextAlignment = TextAlignment.Center; _hint.MaxWidth = 460;
         _hint.TextTrimming = TextTrimming.CharacterEllipsis;
         _miniSpeed.HorizontalAlignment = HorizontalAlignment.Center;
-        var center = _center = Ui.V(8, _orb, _status, _timer, _miniSpeed, _hint, _ports);
+        _ports.MinHeight = 30; _hint.MinHeight = 36;
+        _secBtn = SecurityButton();
+        var powerRow = Ui.H(12, _power, _powerPing, _secBtn);
+        powerRow.HorizontalAlignment = HorizontalAlignment.Center;
+        _modesStrip.Margin = new Thickness(0, 6, 0, 0);
+        var center = _center = Ui.V(8, _orb, powerRow, _status, _timer, _miniSpeed, _hint, _ports, _modesStrip);
         center.Margin = new Thickness(0, 12, 0, 18);
         center.VerticalAlignment = VerticalAlignment.Center;
         center.HorizontalAlignment = HorizontalAlignment.Center;
         Grid.SetRow(center, 1);
-        _map.Avoid = _orb; _map.Band = center;
+        _map.Avoid = powerRow; _map.Band = center;
         center.LayoutUpdated += (_, _) => _map.InvalidateVisual();
         _root.Children.Add(center);
 
@@ -207,6 +222,18 @@ public class HomePage : IPage
         _orb.Phase = c.Phase;
         _orb.Kick();
         var m = SatraState.I.Mode;
+        _power.Phase = c.Phase;
+        var prof = ServiceLib.Satra.ProfileModes.Normalize(SatraState.I.Profile);
+        _power.SetText(c.Phase switch
+        {
+            ConnPhase.On => L.S("pw_connected"), ConnPhase.Connecting => L.S("pw_connecting"), ConnPhase.Disconnecting => L.S("pw_stopping"),
+            ConnPhase.Failed => L.S("pw_retry"), _ => L.S("pw_connect"),
+        }, prof == "normal" ? L.S(ConnModes.Label(m)) : c.Phase == ConnPhase.On ? L.F("mode_on", L.S("mode_" + prof)) : $"{L.S(ConnModes.Label(m))} · {L.S("mode_" + prof)}");
+        // once connected: measure the active config right away (auto ping, not user-started: no TUN notice)
+        if (c.Phase == ConnPhase.On && _lastPhase != ConnPhase.On && c.Active is { } act) _ = PingEngine.I.PingOneAsync(act);
+        _lastPhase = c.Phase;
+        _powerPing.Content = c.Phase == ConnPhase.On && c.Active is { } ap ? ServersPage.PingPill(ServersPage.Delay(ap), PingEngine.I.Get(ap.IndexId).Status == PingStatus.Pending) : null;
+        PaintStrip();
         (_status.Text, _hint.Text, var col) = c.Phase switch
         {
             ConnPhase.On when c.ServerSilent => (L.S("st_on_" + Short(m)), L.S("srv_no_answer"), P.Warning),
@@ -214,13 +241,14 @@ public class HomePage : IPage
             ConnPhase.Connecting => (L.S("connecting"), L.S("d_connecting"), P.Accent),
             ConnPhase.Disconnecting => (L.S("disconnecting"), "", P.Text2),
             ConnPhase.Failed => (L.S("failed"), c.LastError ?? L.S("retry"), P.Danger),
-            _ => (L.S("st_off"), L.S("d_off"), P.Text),
+            _ => (L.S("st_off"), c.ModeAwaitingConnect ? L.S("await_connect") : L.S("d_off"), P.Text),
         };
         var psig = $"{c.Phase == ConnPhase.On}{m}{L.Lang}";
         if (psig != _portsSig) { _portsSig = psig; _ports.Content = c.Phase == ConnPhase.On && m != ConnModes.Tun ? PortChips() : null; }
         _status.Foreground = P.B(col);
         _timer.Text = c.Since is { } s ? (DateTime.Now - s).ToString(@"hh\:mm\:ss") : "";
-        _timer.IsVisible = c.Phase == ConnPhase.On;
+        // keep the line's space so the switch never moves when the state changes
+        _timer.Opacity = c.Phase == ConnPhase.On ? 1 : 0;
 
         var mode = SatraState.I.Mode switch { "tun" => L.S("mode_vpn"), "socks" => L.S("mode_proxy_only"), _ => L.S("mode_proxy") };
         _modeChip.Child = Ui.T(mode, 10.5, FontWeight.SemiBold, P.Text2);
@@ -245,13 +273,14 @@ public class HomePage : IPage
             Refit();
         }
         else { UpdateHomePing(); UpdatePicks(); }
-        _miniSpeed.IsVisible = _density >= 3 && c.Phase == ConnPhase.On;
+        _miniSpeed.Opacity = c.Phase == ConnPhase.On ? 1 : 0;
         UpdateSpeed();
     }
 
     private void UpdateHomePing()
     {
         var a = SatraCore.I.Active;
+        if (a != null && SatraCore.I.Phase == ConnPhase.On) _powerPing.Content = ServersPage.PingPill(ServersPage.Delay(a), PingEngine.I.Get(a.IndexId).Status == PingStatus.Pending);
         if (a == null || a.IndexId != _pingTargetId) return;
         _homePing.Content = ServersPage.PingPill(ServersPage.Delay(a), PingEngine.I.Get(a.IndexId).Status == PingStatus.Pending);
     }
@@ -393,7 +422,7 @@ public class HomePage : IPage
         for (var i = 0; i < 3; i++) { var s = NewSlot(); _slots.Add(s); rows.Children.Add(s.View); }
         UpdatePicks();
         var head = Ui.Row(Ui.Section(L.S("server")), Ui.H(4,
-            Ui.Btn(L.S("ping_all_short"), Ui.Kind.Ghost, () => _ = PingEngine.I.PingAllAsync(SatraCore.I.Profiles.ProfileItems.ToList()), "◎", 12),
+            Ui.Btn(L.S("ping_all_short"), Ui.Kind.Ghost, () => _ = PingGuard.All(SatraCore.I.Profiles.ProfileItems.ToList()), "◎", 12),
             Ui.Btn(L.S("all_servers") + "  ›", Ui.Kind.Ghost, () => SatraShell.I.Go("servers"), size: 12)));
         return Ui.Enter(Ui.V(6, head, Ui.Card(rows, new Thickness(16, 12))));
     }
@@ -437,9 +466,120 @@ public class HomePage : IPage
         if (q != null) meta.Add(q);
         // Fresh ContentControl each rebuild — reusing _homePing under a new parent crashes Avalonia.
         _homePing = new ContentControl { Content = ServersPage.PingPill(ServersPage.Delay(a), PingEngine.I.Get(a.IndexId).Status == PingStatus.Pending) };
-        var pingBtn = Ui.IconBtn("◎", () => _ = PingEngine.I.PingOneAsync(a), L.S("ping"), P.Text2, 15);
+        var pingBtn = Ui.IconBtn("◎", () => _ = PingGuard.One(a), L.S("ping"), P.Text2, 15);
         var right = Ui.H(8, _homePing, pingBtn);
         return Ui.Row(left, right);
+    }
+
+    private Border SecurityButton()
+    {
+        var b = new Border
+        {
+            Height = 44, Padding = new Thickness(16, 0), CornerRadius = Ui.RPill, Background = P.B(P.Surface), BorderBrush = P.B(P.Separator), BorderThickness = new Thickness(1),
+            Cursor = new Cursor(StandardCursorType.Hand), VerticalAlignment = VerticalAlignment.Center,
+            Child = Ui.H(8, Ui.T("⛨", 15, FontWeight.Normal, P.Info), Ui.T(L.S("security_short"), 13.5, FontWeight.SemiBold)),
+        };
+        if (b.Child is StackPanel sp) foreach (var k in sp.Children) k.VerticalAlignment = VerticalAlignment.Center;
+        b.PointerEntered += (_, _) => b.Background = P.B(P.Raised);
+        b.PointerExited += (_, _) => b.Background = P.B(P.Surface);
+        b.PointerReleased += (_, _) => SatraShell.I.Go("security");
+        Avalonia.Automation.AutomationProperties.SetName(b, L.S("security_short"));
+        return Ui.Pressable(b);
+    }
+
+    private static readonly (string id, string glyph)[] ModeGlyphs =
+        [("normal", "◉"), ("game", "▶"), ("secure", "⛨"), ("fortress", "▣"), ("stream", "≋"), ("eco", "❀")];
+
+    /// Connection profiles (MODES-SPEC.md): one calm chip row; rebuilt only when selection/gating/language changes.
+    private void PaintStrip()
+    {
+        var tun = SatraState.I.Mode == ConnModes.Tun;
+        var cur = ServiceLib.Satra.ProfileModes.Normalize(SatraState.I.Profile);
+        var sig = $"{cur}{tun}{L.Lang}{_density >= 3}";
+        if (sig == _stripSig) return;
+        _stripSig = sig;
+        _modesStrip.Children.Clear();
+        foreach (var (id, glyph) in ModeGlyphs)
+        {
+            var sel = id == cur;
+            var ok = ServiceLib.Satra.ProfileModes.Available(id, tun);
+            var chip = new Border
+            {
+                Height = 30, Padding = new Thickness(_density >= 3 ? 9 : 12, 0), CornerRadius = Ui.RPill,
+                Background = P.B(sel ? P.Lerp(P.Surface, P.Accent, 0.16) : P.Surface),
+                BorderBrush = P.B(sel ? P.Lerp(P.Surface, P.Accent, 0.6) : P.Separator), BorderThickness = new Thickness(1),
+                Cursor = new Cursor(ok ? StandardCursorType.Hand : StandardCursorType.Arrow), Opacity = ok ? 1 : 0.42,
+                Child = Ui.H(6, Ui.T(glyph, 11.5, FontWeight.Normal, sel ? P.Accent : P.Text3), Ui.T(L.S("mode_" + id), 12.5, sel ? FontWeight.SemiBold : FontWeight.Medium, sel ? P.Text : P.Text2)),
+            };
+            if (chip.Child is StackPanel sp) foreach (var k in sp.Children) k.VerticalAlignment = VerticalAlignment.Center;
+            ToolTip.SetTip(chip, ok ? L.S("mode_" + id + "_d") : L.S("gate_tun") + " — " + L.S("mode_gate_d"));
+            Avalonia.Automation.AutomationProperties.SetName(chip, L.S("mode_" + id));
+            chip.Transitions = new Avalonia.Animation.Transitions { new Avalonia.Animation.BrushTransition { Property = Border.BackgroundProperty, Duration = TimeSpan.FromMilliseconds(220) } };
+            chip.PointerReleased += (_, _) =>
+            {
+                if (!ok) { SatraCore.I.Notify(L.S("gate_tun")); return; }
+                if (id == ServiceLib.Satra.ProfileModes.Normalize(SatraState.I.Profile)) return;
+                ActivateMode(id);
+            };
+            _modesStrip.Children.Add(Ui.Pressable(chip));
+        }
+    }
+
+    public static string? LastActivation; // QA
+    /// The activation moment: a floating card lists what the mode changes, ticking each item, then "X mode is on".
+    /// It floats above the page (no layout change underneath) and fades away by itself.
+    public void ActivateMode(string id)
+    {
+        var tun = SatraState.I.Mode == ConnModes.Tun;
+        var changes = ServiceLib.Satra.ProfileModes.Changes(id, tun);
+        LastActivation = id + ":" + string.Join(",", changes.Select(c => c.key));
+        var title = Ui.T(L.F("mode_applying", L.S("mode_" + id)), 15, FontWeight.SemiBold);
+        var list = new StackPanel { Spacing = 7, Margin = new Thickness(0, 10, 0, 0) };
+        var rows = new List<(Border tick, Control row)>();
+        foreach (var (key, arg) in changes)
+        {
+            var tick = new Border { Width = 18, Height = 18, CornerRadius = Ui.RPill, Background = P.B(P.Fill), Child = Ui.T("✓", 10.5, FontWeight.Bold, P.Bg), VerticalAlignment = VerticalAlignment.Center };
+            if (tick.Child is TextBlock tt) { tt.HorizontalAlignment = HorizontalAlignment.Center; tt.VerticalAlignment = VerticalAlignment.Center; tt.Opacity = 0; }
+            tick.Transitions = new Avalonia.Animation.Transitions { new Avalonia.Animation.BrushTransition { Property = Border.BackgroundProperty, Duration = TimeSpan.FromMilliseconds(200) } };
+            var txt = Ui.T(arg == null ? L.S(key) : L.F(key, arg), 13, FontWeight.Medium, P.Text2);
+            txt.VerticalAlignment = VerticalAlignment.Center;
+            var row = Ui.H(10, tick, txt);
+            row.Opacity = 0;
+            row.Transitions = new Avalonia.Animation.Transitions { new Avalonia.Animation.DoubleTransition { Property = Visual.OpacityProperty, Duration = TimeSpan.FromMilliseconds(260) } };
+            rows.Add((tick, row));
+            list.Children.Add(row);
+        }
+        var foot = Ui.Caption(SatraCore.I.Phase == ConnPhase.On ? "" : L.S("mode_applies_next"), P.Text3);
+        foot.Margin = new Thickness(0, 10, 0, 0);
+        var card = new Border
+        {
+            Width = 340, Padding = new Thickness(22, 18), CornerRadius = new CornerRadius(20), Background = P.B(P.Raised),
+            BorderBrush = P.B(P.Separator), BorderThickness = new Thickness(1), BoxShadow = BoxShadows.Parse("0 24 60 0 #AA000000"),
+            HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center, IsHitTestVisible = false,
+            Child = Ui.V(0, title, list, foot), Opacity = 0,
+            RenderTransform = TransformOperations.Parse("scale(0.96)"),
+            Transitions = new Avalonia.Animation.Transitions
+            {
+                new Avalonia.Animation.DoubleTransition { Property = Visual.OpacityProperty, Duration = TimeSpan.FromMilliseconds(240) },
+                new Avalonia.Animation.TransformOperationsTransition { Property = Visual.RenderTransformProperty, Duration = TimeSpan.FromMilliseconds(320), Easing = new Avalonia.Animation.Easings.CubicEaseOut() },
+            },
+        };
+        _host?.Children.Add(card);
+        DispatcherTimer.RunOnce(() => { card.Opacity = 1; card.RenderTransform = TransformOperations.Parse("scale(1)"); }, TimeSpan.FromMilliseconds(16));
+        for (var i = 0; i < rows.Count; i++)
+        {
+            var (tick, row) = rows[i];
+            DispatcherTimer.RunOnce(() =>
+            {
+                row.Opacity = 1;
+                DispatcherTimer.RunOnce(() => { tick.Background = P.B(P.Success); if (tick.Child is TextBlock t) t.Opacity = 1; }, TimeSpan.FromMilliseconds(160));
+            }, TimeSpan.FromMilliseconds(260 + i * 200));
+        }
+        var end = 260 + rows.Count * 200 + 250;
+        DispatcherTimer.RunOnce(() => { title.Text = L.F("mode_on", L.S("mode_" + id)); title.Foreground = P.B(P.Success); }, TimeSpan.FromMilliseconds(end));
+        DispatcherTimer.RunOnce(() => { card.Opacity = 0; card.RenderTransform = TransformOperations.Parse("scale(0.98)"); }, TimeSpan.FromMilliseconds(end + 1500));
+        DispatcherTimer.RunOnce(() => _host?.Children.Remove(card), TimeSpan.FromMilliseconds(end + 1850));
+        _ = SatraCore.I.SetProfileAsync(id);
     }
 
     private static Control? QuotaPill(string? subId)

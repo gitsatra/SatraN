@@ -100,7 +100,7 @@ public class ServersPage : IPage
         m.Items.Add(new Separator());
         m.Items.Add(Mi(L.S("cm_edit"), () => ServerEditor.Open(p)));
         m.Items.Add(Mi(L.S("cm_duplicate"), () => _ = Do(async c => await ConfigHandler.CopyServer(c, [await Prof(p)]))));
-        m.Items.Add(Mi(L.S("ping"), () => _ = PingEngine.I.PingOneAsync(p)));
+        m.Items.Add(Mi(L.S("ping"), () => _ = PingGuard.One(p)));
         var mux = new MenuItem { Header = L.S("mux"), ToggleType = MenuItemToggleType.CheckBox };
         m.Opening += async (_, _) =>
         {
@@ -326,7 +326,7 @@ public class ServersPage : IPage
     private readonly Dictionary<string, int> _shown = [];
     private DispatcherTimer? _pulse;
 
-    private Task PingAllAsync() => PingEngine.I.PingAllAsync(SatraCore.I.Profiles.ProfileItems.ToList());
+    private Task PingAllAsync() => PingGuard.All(SatraCore.I.Profiles.ProfileItems.ToList());
 
     private void SetTesting(bool on)
     {
@@ -504,7 +504,7 @@ public class ServersPage : IPage
         _speedHosts[id] = speedHost;
 
         var right = new List<Control> { speedHost, pingHost };
-        right.Add(Ui.IconBtn("◎", () => _ = PingEngine.I.PingOneAsync(p), L.S("ping"), P.Text2, 14));
+        right.Add(Ui.IconBtn("◎", () => _ = PingGuard.One(p), L.S("ping"), P.Text2, 14));
         right.Add(Ui.IconBtn("↯", () => SpeedSheet([p]), L.S("speed"), P.Text2, 14));
 
         var card = Ui.Card(Ui.Row(left, Ui.H(6, right.ToArray())), new Thickness(12, 10), isActive ? P.Lerp(P.Surface, P.Success, 0.08) : null);

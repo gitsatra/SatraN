@@ -9,6 +9,7 @@ public static partial class L
 
     public static string S(string key)
     {
+        if (Y.TryGetValue(key, out var y)) return Lang == "fa" ? y.fa : Lang == "ru" ? y.ru : y.en;
         if (X.TryGetValue(key, out var x)) return Lang == "fa" ? x.fa : Lang == "ru" ? x.ru : x.en;
         if (Lang == "fa" && Fa.TryGetValue(key, out var f)) return f;
         if (Lang == "ru" && Ru.TryGetValue(key, out var r)) return r;
