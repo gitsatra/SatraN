@@ -1,3 +1,6 @@
+using Avalonia.Animation;
+using Avalonia.Animation.Easings;
+using Avalonia.Media.Transformation;
 using Avalonia.Layout;
 using v2rayN.Desktop.Satra.Services;
 
@@ -45,9 +48,12 @@ public class ServersPage : IPage
         var sv = new ScrollViewer { Content = _list };
         Grid.SetRow(sv, 3);
         _root.Children.Add(sv);
+        // Android parity: thin indeterminate bar while a ping run is active
+        Grid.SetRow(_testBar, 3);
+        _root.Children.Add(_testBar);
 
         SatraCore.I.Profiles.ProfileItems.CollectionChanged += (_, _) => Dispatcher.UIThread.Post(() => Rebuild(false));
-        SatraCore.I.Profiles.SpeedTestUpdated += () => Dispatcher.UIThread.Post(UpdatePingsInPlace);
+        SatraCore.I.Profiles.SpeedTestUpdated += () => { _lastResult = DateTime.UtcNow; Dispatcher.UIThread.Post(UpdatePingsInPlace); };
     }
 
     private static Control Center(Control c)
@@ -115,12 +121,49 @@ public class ServersPage : IPage
         });
     }
 
+    private readonly ProgressBar _testBar = new()
+    {
+        IsIndeterminate = true, IsVisible = false, Height = 3, MinHeight = 3, VerticalAlignment = VerticalAlignment.Top,
+        Margin = new Thickness(0, 0, 0, 0), ZIndex = 5, Foreground = P.B(P.Accent), Background = Brushes.Transparent, CornerRadius = new CornerRadius(2),
+    };
+    private readonly Dictionary<string, int> _shown = [];
+    private DispatcherTimer? _pulse;
+    private DateTime _lastResult = DateTime.MinValue;
+
     private async Task PingAllAsync()
     {
         _pinging = true;
+        SetTesting(true);
         UpdatePingsInPlace(); // show … on empty
-        try { await SatraCore.I.RunTestAsync(ESpeedActionType.Realping); }
-        finally { _pinging = false; UpdatePingsInPlace(); }
+        try
+        {
+            var start = DateTime.UtcNow;
+            _lastResult = DateTime.MinValue;
+            await SatraCore.I.RunTestAsync(ESpeedActionType.Realping); // returns before results arrive
+            // results stream in via SpeedTestUpdated; done when quiet for 2s after the first one (cap 15s)
+            while (DateTime.UtcNow - start < TimeSpan.FromSeconds(15)
+                   && (_lastResult == DateTime.MinValue || DateTime.UtcNow - _lastResult < TimeSpan.FromSeconds(2)))
+                await Task.Delay(250);
+        }
+        finally { _pinging = false; SetTesting(false); UpdatePingsInPlace(); }
+    }
+
+    private void SetTesting(bool on)
+    {
+        _testBar.IsVisible = on;
+        if (on && _pulse == null)
+        {
+            var t = 0.0;
+            _pulse = new DispatcherTimer(TimeSpan.FromMilliseconds(50), DispatcherPriority.Render, (_, _) =>
+            {
+                t += 0.05;
+                var o = 0.45 + 0.55 * (0.5 + 0.5 * Math.Cos(t * Math.PI * 2 / 1.1));
+                foreach (var h in _pingHosts.Values)
+                    if (h.Content is Border { Tag: "pending" } b) b.Opacity = o;
+            });
+            _pulse.Start();
+        }
+        else if (!on) { _pulse?.Stop(); _pulse = null; }
     }
 
     public static string SubName(string? subId)
@@ -130,15 +173,35 @@ public class ServersPage : IPage
         return SatraCore.I.Profiles.SubItems.FirstOrDefault(s => s.Id == subId)?.Remarks is { } r ? Ui.CleanName(r) : "";
     }
 
-    public static Border PingPill(int delay, bool spinning = false) => delay switch
+    /// <summary>Same thresholds/labels as Android SatraPingBadge: &lt;150 green, ≤250 amber, else red; "—", "timeout".</summary>
+    public static Border PingPill(int delay, bool spinning = false)
     {
-        _ when spinning && delay == 0 => Ui.Pill("…", P.Accent, P.AccentSoft),
-        > 0 and < 300 => Ui.Pill(Ui.Ltr($"{delay} ms"), P.Success, P.SuccessSoft),
-        > 0 and < 800 => Ui.Pill(Ui.Ltr($"{delay} ms"), P.Warning, P.WarningSoft),
-        > 0 => Ui.Pill(Ui.Ltr($"{delay} ms"), P.Danger, P.DangerSoft),
-        < 0 => Ui.Pill("timeout", P.Danger, P.DangerSoft),
-        _ => Ui.Pill(Ui.Ltr("— ms"), P.Text3, P.Fill),
-    };
+        var b = delay switch
+        {
+            _ when spinning && delay == 0 => Ui.Pill("…", P.Accent, P.AccentSoft),
+            >= 10_000 or < 0 => Ui.Pill("timeout", P.Danger, P.DangerSoft),
+            > 0 and < 150 => Ui.Pill(Ui.Ltr($"{delay} ms"), P.Success, P.SuccessSoft),
+            > 0 and <= 250 => Ui.Pill(Ui.Ltr($"{delay} ms"), P.Warning, P.WarningSoft),
+            > 0 => Ui.Pill(Ui.Ltr($"{delay} ms"), P.Danger, P.DangerSoft),
+            _ => Ui.Pill("—", P.Text3, P.Fill),
+        };
+        if (spinning && delay == 0) b.Tag = "pending";
+        return b;
+    }
+
+    /// <summary>Fade + slight pop when a server's value changes (Android animates the badge color).</summary>
+    private static Border Pop(Border b)
+    {
+        b.Opacity = 0;
+        b.RenderTransform = TransformOperations.Parse("scale(0.85)");
+        b.Transitions =
+        [
+            new DoubleTransition { Property = Visual.OpacityProperty, Duration = TimeSpan.FromMilliseconds(220) },
+            new TransformOperationsTransition { Property = Visual.RenderTransformProperty, Duration = TimeSpan.FromMilliseconds(260), Easing = new BackEaseOut() },
+        ];
+        Dispatcher.UIThread.Post(() => { b.Opacity = 1; b.RenderTransform = TransformOperations.Parse("scale(1)"); }, DispatcherPriority.Background);
+        return b;
+    }
 
     public void Refresh()
     {
@@ -154,7 +217,18 @@ public class ServersPage : IPage
         {
             var id = p.IndexId ?? "";
             if (_pingHosts.TryGetValue(id, out var host))
-                host.Content = PingPill(Delay(p), _pinging && p.Delay == 0);
+            {
+                var d = Delay(p);
+                var pending = _pinging && p.Delay == 0;
+                var key = pending ? int.MinValue : d;
+                if (!(_shown.TryGetValue(id, out var prev) && prev == key && host.Content != null))
+                {
+                    var changed = _shown.ContainsKey(id) && !pending;
+                    _shown[id] = key;
+                    var pill = PingPill(d, pending);
+                    host.Content = changed ? Pop(pill) : pill;
+                }
+            }
             if (_speedHosts.TryGetValue(id, out var sh) && !string.IsNullOrEmpty(p.SpeedVal) && p.SpeedVal != "0")
                 sh.Content = Ui.Caption(decimal.TryParse(p.SpeedVal, out var mbs) ? $"↓ {mbs * 8:0.#} Mbps" : p.SpeedVal, P.Text2);
         }
@@ -206,6 +280,7 @@ public class ServersPage : IPage
         }
         _sig = sig;
         _pingHosts.Clear();
+        _shown.Clear();
         _speedHosts.Clear();
         _list.Children.Clear();
         if (list.Count == 0)
