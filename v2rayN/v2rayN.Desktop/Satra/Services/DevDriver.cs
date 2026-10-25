@@ -68,6 +68,24 @@ public static class DevDriver
             case "edset": { var kv = arg.Split(' ', 2); ServerEditor.DevSet?.Invoke(kv[0], kv.Length > 1 ? kv[1] : ""); break; }
             case "edsave": ServerEditor.DevSave?.Invoke(); await Task.Delay(800); break;
             case "ctx": SatraShell.I.Go("servers"); await Task.Delay(300); ServersPage.Last?.DevCtx(int.Parse(arg)); break;
+            case "delpre":
+                var cfgD = AppManager.Instance.Config;
+                var dels = SatraCore.I.Profiles.ProfileItems.Where(p => p.Remarks.StartsWith(arg)).ToList();
+                var items = new List<ProfileItem>();
+                foreach (var x in dels) { var pi = await Task.Run(() => AppManager.Instance.GetProfileItem(x.IndexId)); if (pi != null) items.Add(pi); }
+                await ConfigHandler.RemoveServers(cfgD, items);
+                SatraCore.I.Profiles.RefreshServers(); break;
+            case "pingname": _ = PingEngine.I.PingOneAsync(SatraCore.I.Profiles.ProfileItems.First(p => p.Remarks.Contains(arg))); break;
+            case "subadd": await SatraCore.I.AddFromClipboardAsync(arg); break;
+            case "subup": await SatraCore.I.UpdateSubsAsync(); File.AppendAllText(Path.Combine(dir, "subs.txt"), $"{DateTime.Now:HH:mm:ss} via={SubFallback.LastVia}\n"); break;
+            case "subs":
+                foreach (var sb in await AppManager.Instance.SubItems() ?? [])
+                {
+                    SatraState.I.Subs.TryGetValue(sb.Id, out var st);
+                    var n = SatraCore.I.Profiles.ProfileItems.Count(p => p.Subid == sb.Id);
+                    File.AppendAllText(Path.Combine(dir, "subs.txt"), $"{DateTime.Now:HH:mm:ss} {sb.Remarks} {sb.Url} n={n} err={st?.Error} fetched={st?.Fetched}\n");
+                }
+                break;
             case "dump": File.WriteAllLines(Path.Combine(dir, "servers.txt"), SatraCore.I.Profiles.ProfileItems.Select(p => $"{p.ConfigType} {p.Remarks} {p.Address}:{p.Port} {p.Network} {p.StreamSecurity}")); break;
             case "scat": SettingsPage.DevCat = arg; SatraShell.I.Go("settings"); break;
             case "upcheck": await AutoUpdater.RunAsync(true); break;
