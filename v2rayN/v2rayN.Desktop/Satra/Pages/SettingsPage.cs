@@ -8,7 +8,7 @@ public class SettingsPage : IPage
 {
     private readonly Grid _root = new() { Margin = new Thickness(36, 28, 36, 0), RowDefinitions = new RowDefinitions("Auto,*") };
     private readonly StackPanel _body = new() { Spacing = 10, Margin = new Thickness(0, 0, 0, 28), MaxWidth = 760, HorizontalAlignment = HorizontalAlignment.Left };
-    private readonly StackPanel _nav = new() { Spacing = 2, Width = 200, Margin = new Thickness(0, 0, 24, 0) };
+    private readonly StackPanel _nav = new() { Spacing = 2, Width = 240, Margin = new Thickness(0, 0, 24, 0) };
     private string _cat = "general";
     public static string? DevCat;
     private static readonly (string Id, string Glyph, string Key)[] Cats =

@@ -37,6 +37,7 @@ public static class DevDriver
         switch (c)
         {
             case "go": SatraShell.I.Go(arg); break;
+            case "lang": AppManager.Instance.Config.UiItem.CurrentLanguage = arg; await ConfigHandler.SaveConfig(AppManager.Instance.Config); if (SatraShell.I.Parent is ContentControl lcc) { var lw = SatraShell.I.Window; lcc.Content = null; lcc.Content = new SatraShell(lw); } break;
             case "shot":
                 await Task.Delay(300);
                 var w = SatraShell.I.Window;

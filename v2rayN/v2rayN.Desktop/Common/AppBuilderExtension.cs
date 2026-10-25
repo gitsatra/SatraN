@@ -8,6 +8,8 @@ public static class AppBuilderExtension
     public static AppBuilder WithFontByDefault(this AppBuilder appBuilder)
     {
         var fallbacks = new List<FontFallback>();
+        // Bundled Persian subset (Vazirmatn, ~107 KB) so Persian looks the same on every OS.
+        fallbacks.Add(new FontFallback { FontFamily = new FontFamily("avares://SatraN/Assets/Fonts#Vazirmatn") });
 
         if (OperatingSystem.IsWindows())
         {
