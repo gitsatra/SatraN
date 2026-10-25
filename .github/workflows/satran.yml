@@ -51,7 +51,7 @@ jobs:
           curl -fsSL -o sb.$ext https://github.com/SagerNet/sing-box/releases/download/v${SINGBOX_VERSION}/sing-box-${SINGBOX_VERSION}-$sb.$ext
           mkdir sb && if [ $ext = zip ]; then unzip -q sb.zip -d sb; else tar -xzf sb.tar.gz -C sb; fi
           find sb -type f \( -name 'sing-box*' -o -name 'wintun.dll' \) -exec cp {} xray/ \;
-      - uses: actions/setup-go@v5
+      - uses: actions/setup-go@v7
         with:
           go-version: 'stable'
           cache: false
