@@ -388,9 +388,23 @@ public class SatraCore : ReactiveObject
             if (p.ExitCode == 0) return null;
             var line = o.Split('\n').LastOrDefault(l => l.Contains("Failed", StringComparison.OrdinalIgnoreCase)) ?? "";
             Logging.SaveLog("satra diagnose: " + line);
-            return L.S("core_refused") + (line.Length > 0 ? " · " + line[(line.LastIndexOf('>') + 1)..].Trim() : "");
+            return L.S("core_refused") + CoreReason(line);
         }
         catch (Exception ex) { Logging.SaveLog("satra diagnose", ex); return null; }
+    }
+
+    /// Known core failures in the UI language; the raw English line stays in the log (and is shown only in English UI).
+    internal static string CoreReason(string line)
+    {
+        if (line.Length == 0) return "";
+        var l = line.ToLowerInvariant();
+        string? k = l.Contains("address already in use") || l.Contains("only one usage of each socket") ? "core_err_port"
+            : l.Contains("geosite") || l.Contains("geoip") || l.Contains(".dat") ? "core_err_geo"
+            : l.Contains("failed to parse") || l.Contains("invalid") || l.Contains("unknown") || l.Contains("json") ? "core_err_config"
+            : l.Contains("permission denied") || l.Contains("operation not permitted") ? "core_err_perm"
+            : null;
+        if (k != null) return " · " + L.S(k);
+        return L.Lang == "en" ? " · " + line[(line.LastIndexOf('>') + 1)..].Trim() : "";
     }
 
     private async Task RefreshActiveExitAsync()

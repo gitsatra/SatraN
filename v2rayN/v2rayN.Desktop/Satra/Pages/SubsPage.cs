@@ -420,7 +420,8 @@ public class SubsPage : IPage
 
         var open = _open.Contains(s.Id);
         var chev = Ui.T("›", 15, FontWeight.SemiBold, P.Text2);
-        chev.RenderTransform = new RotateTransform(open ? 90 : 0); chev.RenderTransformOrigin = RelativePoint.Center;
+        chev.FlowDirection = FlowDirection.LeftToRight; // inside an RTL row this gets the mirror transform, so "›" reads "‹" in fa; the open turn is mirrored too, hence -90 there (checked on screen)
+        chev.RenderTransform = new RotateTransform(open ? (L.Rtl ? -90 : 90) : 0); chev.RenderTransformOrigin = RelativePoint.Center;
         var srvBtn = Ui.Btn(L.S("servers") + $"  {cfgCount}", Ui.Kind.Ghost, () =>
         {
             if (!_open.Remove(s.Id)) { _open.Add(s.Id); _ = PingGuard.All(SatraCore.I.Profiles.ProfileItems.Where(p => p.Subid == s.Id).ToList()); }

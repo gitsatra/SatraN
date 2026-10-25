@@ -1,3 +1,4 @@
+using Avalonia.VisualTree;
 using Avalonia.Animation;
 using Avalonia.Platform;
 
@@ -85,20 +86,41 @@ public class WorldMap : Control
         InvalidateVisual();
     }
 
-    /// <summary>The connect button (horizontal no-go zone) and the block whose height the map may use.</summary>
-    public Control? Avoid, Band;
+    /// <summary>Hero text and hero controls (both no-go zones) and the block whose height the map may use.</summary>
+    public Control? Avoid, Controls, Band;
+    private bool _hugLeft;
 
     private Rect? FreeBox(double W, double H)
     {
         if (Avoid == null || Band == null) return null;
-        var o = Avoid.TranslatePoint(new Point(0, 0), this);
-        var bt = Band.TranslatePoint(new Point(0, 0), this);
-        if (o is not { } op || bt is not { } bp) return null;
-        // Right side only: from just right of the connect button to the page's right edge.
-        const double gap = 36, edge = 24;
-        var x = op.X + Avoid.Bounds.Width + gap;
-        var r = new Rect(x, bp.Y, Math.Max(0, W - edge - x), Band.Bounds.Height);
-        return r.Width < 140 || r.Height < 60 ? null : r;
+        // Layout bounds are logical (start-based); fa mirrors the hero at render time, so mirror them back to visual x.
+        var rtl = Band.FlowDirection == FlowDirection.RightToLeft;
+        var bb = Band.Bounds;
+        Rect? R(Control? c)
+        {
+            if (c == null || !c.IsVisible) return null;
+            double x = 0, y = 0; Visual? v = c;
+            while (v != null && v != Band) { x += v.Bounds.X; y += v.Bounds.Y; v = v.GetVisualParent(); }
+            if (v == null) return null;
+            var w = c.Bounds.Width;
+            return new Rect(bb.X + (rtl ? bb.Width - x - w : x), bb.Y + y, w, c.Bounds.Height);
+        }
+        var bp = bb.Position;
+        var t = R(Avoid); var k = R(Controls);
+        if (t is not { } tr) return null;
+        // The gap between the hero text and the hero controls, in either direction (fa mirrors the hero).
+        const double gap = 20;
+        double l, r;
+        if (k is { } kr)
+        {
+            var textFirst = tr.X < kr.X;
+            l = textFirst ? tr.Right + gap : kr.Right + gap;
+            r = textFirst ? kr.X - gap : tr.X - gap;
+            _hugLeft = !textFirst; // sit next to the controls
+        }
+        else { l = tr.Right + gap; r = W - 24; _hugLeft = false; }
+        var box = new Rect(l, bp.Y, Math.Max(0, r - l), Band.Bounds.Height);
+        return box.Width < 110 || box.Height < 60 ? null : box;
     }
 
     public override void Render(DrawingContext dc)
@@ -113,14 +135,14 @@ public class WorldMap : Control
         var box = FreeBox(W, H);
         if (box is not { } fb) return;
         var s = Math.Min(fb.Width / mw, fb.Height / mh);
-        var tx = fb.Right - mw * s; // hug the right edge
+        var tx = _hugLeft ? fb.X : fb.Right - mw * s; // sit beside the controls
         var ty = fb.Y + (fb.Height - mh * s) / 2;
         var dark = (P.Bg.R + P.Bg.G + P.Bg.B) < 384;
         var ink = dark ? Colors.White : Colors.Black;
         var land = new SolidColorBrush(ink, dark ? 0.06 : 0.07);
         var fade = new LinearGradientBrush
         {
-            StartPoint = new RelativePoint(tx, 0, RelativeUnit.Absolute), EndPoint = new RelativePoint(tx + mw * s * 0.35, 0, RelativeUnit.Absolute),
+            StartPoint = new RelativePoint(_hugLeft ? tx + mw * s : tx, 0, RelativeUnit.Absolute), EndPoint = new RelativePoint(_hugLeft ? tx + mw * s * 0.65 : tx + mw * s * 0.35, 0, RelativeUnit.Absolute),
             GradientStops = { new GradientStop(Color.FromArgb(0, 0, 0, 0), 0), new GradientStop(Colors.Black, 1) }
         };
         using (dc.PushOpacityMask(fade, new Rect(tx, ty, mw * s, mh * s)))

@@ -361,7 +361,7 @@ public class ServersPage : IPage
         var b = delay switch
         {
             _ when spinning => Ui.Pill("…", P.Accent, P.AccentSoft),
-            >= 10_000 or < 0 => Ui.Pill("timeout", P.Danger, P.DangerSoft),
+            >= 10_000 or < 0 => Ui.Pill(L.S("ping_to"), P.Danger, P.DangerSoft),
             > 0 and < 150 => Ui.Pill(Ui.Ltr($"{delay} ms"), P.Success, P.SuccessSoft),
             > 0 and <= 250 => Ui.Pill(Ui.Ltr($"{delay} ms"), P.Warning, P.WarningSoft),
             > 0 => Ui.Pill(Ui.Ltr($"{delay} ms"), P.Danger, P.DangerSoft),

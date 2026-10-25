@@ -3,7 +3,7 @@
 
 usage: apt-repo.py <deb_or_dist_dir> <out_dir>
 Produces: out/dists/stable/main/binary-amd64/Packages(.gz) and pool/main/s/satran/*.deb
-Publish the out/ directory to GitHub Pages (liamlope.github.io/satran/apt/).
+Publish the out/ directory to the Satra Hub apt path (signed with the Hub apt key); releases live on gitsatra/SatraN.
 """
 import gzip
 import hashlib

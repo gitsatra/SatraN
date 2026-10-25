@@ -90,10 +90,14 @@ public class HomePage : IPage
         _modeHint.IsVisible = d < 2;
         _modeHost.Margin = new Thickness(0, 0, 0, d >= 2 ? 12 : 20);
         _modeSection.Margin = new Thickness(0, 0, 0, d >= 2 ? 12 : 20);
-        foreach (var t in _modeTiles) { t.Height = d >= 2 ? 38 : 58; if (t.Child is StackPanel sp) sp.Orientation = d >= 2 ? Orientation.Horizontal : Orientation.Vertical; }
-        _bottom.ColumnDefinitions = Bounds() < 760 ? new ColumnDefinitions("*,0,0") : new ColumnDefinitions("3*,16,2*");
+        foreach (var t in _modeTiles) { t.Height = d >= 2 ? 38 : 58; t.Padding = d >= 2 ? new Thickness(4, 0, 22, 0) : new Thickness(0); if (t.Child is StackPanel sp) sp.Orientation = d >= 2 ? Orientation.Horizontal : Orientation.Vertical; }
+        foreach (var i in _modeInfos) { i.VerticalAlignment = d >= 2 ? VerticalAlignment.Center : VerticalAlignment.Top; i.Margin = d >= 2 ? new Thickness(0, 0, 6, 0) : new Thickness(0, 5, 5, 0); }
+        // narrow windows: server and usage stay side by side (usage just gets narrower); only a really tiny window stacks it away
+        var tiny = Bounds() < 600;
+        _bottom.ColumnDefinitions = tiny ? new ColumnDefinitions("*,0,0") : Bounds() < 760 ? new ColumnDefinitions("3*,12,2*") : new ColumnDefinitions("3*,16,2*");
+        if (_bottom.Children.Count > 1) _bottom.Children[1].IsVisible = !tiny;
     }
-    private readonly List<Border> _modeTiles = new();
+    private readonly List<Border> _modeTiles = new(), _modeInfos = new();
     private double Bounds() => _host?.Bounds.Width ?? 1000;
 
     /// Re-fit after content changes (new server card, mode text, update banner…).
@@ -132,7 +136,7 @@ public class HomePage : IPage
         ToolTip.SetTip(_power, L.S("pw_tip"));
         _orb.Clicked += () => _ = SatraCore.I.ToggleAsync();
         _heroState.TextTrimming = _heroSub.TextTrimming = TextTrimming.CharacterEllipsis;
-        _hint.TextWrapping = TextWrapping.Wrap; _hint.MaxWidth = 520; _hint.HorizontalAlignment = HorizontalAlignment.Left; _hint.TextAlignment = TextAlignment.Start; _hint.Margin = new Thickness(0, 4, 0, 0); _hint.TextTrimming = TextTrimming.CharacterEllipsis; _hint.FontSize = 12.5; _hint.Foreground = P.B(P.Text3);
+        _hint.TextWrapping = TextWrapping.Wrap; _hint.MaxWidth = 400; _hint.HorizontalAlignment = HorizontalAlignment.Left; _hint.TextAlignment = TextAlignment.Start; _hint.Margin = new Thickness(0, 4, 0, 0); _hint.TextTrimming = TextTrimming.CharacterEllipsis; _hint.FontSize = 12.5; _hint.Foreground = P.B(P.Text3);
         _heroMeta.Margin = new Thickness(0, 6, 0, 0);
         var stateRow = Ui.H(10, _heroDot, _heroState);
         _heroText = Ui.V(4, stateRow, _heroSub, _heroMeta, _hint);
@@ -143,7 +147,8 @@ public class HomePage : IPage
         var heroGrid = new Grid { ColumnDefinitions = new ColumnDefinitions("*,Auto") };
         Grid.SetColumn(ctl, 1);
         heroGrid.Children.Add(_heroText); heroGrid.Children.Add(ctl);
-        _map.Margin = new Thickness(0); _map.Avoid = _heroText; _map.Band = heroGrid;
+        _map.Margin = new Thickness(0); _map.Avoid = _heroMeta; _map.Controls = ctl; _map.Band = heroGrid; // the faded edge may pass under the grey hint line, never under state, chips or buttons
+        _heroMeta.HorizontalAlignment = HorizontalAlignment.Left;
         var heroPanel = new Panel(); heroPanel.Children.Add(_map); heroPanel.Children.Add(heroGrid);
         heroGrid.LayoutUpdated += (_, _) => _map.InvalidateVisual();
         _hero = new Border { Background = P.B(P.Surface), CornerRadius = Ui.RCard, Padding = new Thickness(26, 22), ClipToBounds = true, Child = heroPanel, Margin = new Thickness(0, 18, 0, 0) };
@@ -521,16 +526,7 @@ public class HomePage : IPage
         if (!string.IsNullOrEmpty(sub)) meta.Add(Ui.Caption(sub, P.Text3));
         if (SatraState.I.SmartConnect) meta.Add(Ui.Pill(L.S("smart"), P.Accent, P.AccentSoft, 10.5));
         var ip = SatraState.I.Geo.TryGetValue(NetBadges.GeoKey(a), out var g) ? g.Ip : "";
-        if (SatraCore.I.Phase == ConnPhase.On && ip.Length > 0)
-        {
-            {
-                var ipb = Ui.Pill(Ui.Ltr(ip) + "  ⧉", P.Text2, P.Fill, 10.5);
-                ipb.Cursor = new Cursor(StandardCursorType.Hand); ToolTip.SetTip(ipb, L.S("sc_ip"));
-                ipb.PointerReleased += (_, _) => _ = SatraShell.I.Copy(ip);
-                meta.Add(Ui.Pressable(ipb));
-            }
-            if (TorExits.IsKnownExit(ip)) meta.Add(TorBadge());
-        }
+        // exit IP + Tor badge live in the hero card only (shown once)
         var q = QuotaPill(a.Subid);
         if (q != null) meta.Add(q);
         var metaRow = new WrapPanel { Orientation = Orientation.Horizontal };
@@ -586,7 +582,7 @@ public class HomePage : IPage
         var sig = $"{cur}{tun}{L.Lang}";
         if (sig == _stripSig) return;
         _stripSig = sig;
-        _modesStrip.Children.Clear(); _modeTiles.Clear();
+        _modesStrip.Children.Clear(); _modeInfos.Clear(); _modeTiles.Clear();
         foreach (var (id, _) in ModeGlyphs)
         {
             var sel = id == cur;
@@ -614,7 +610,7 @@ public class HomePage : IPage
                 Background = P.B(sel ? P.Lerp(P.Surface, mc, 0.16) : P.Surface),
                 BorderBrush = P.B(sel ? P.Lerp(P.Surface, mc, 0.70) : P.Separator), BorderThickness = new Thickness(sel ? 1.5 : 1),
             };
-            _modeTiles.Add(tile);
+            _modeTiles.Add(tile); _modeInfos.Add(info);
             var cell = new Panel { Margin = new Thickness(4, 0), Cursor = new Cursor(ok ? StandardCursorType.Hand : StandardCursorType.Arrow), Opacity = ok ? 1 : 0.4, Children = { tile, info } };
             cell.PointerEntered += (_, _) => { info.Opacity = 1; if (!sel && ok) tile.Background = P.B(P.Lerp(P.Surface, mc, 0.07)); };
             cell.PointerExited += (_, _) => { info.Opacity = sel ? 1 : 0; if (!sel) tile.Background = P.B(P.Surface); };
