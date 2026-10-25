@@ -232,6 +232,7 @@ public class SatraCore : ReactiveObject
     public async Task ConnectAsync(bool pick)
     {
         ModeAwaitingConnect = false;
+        _userOff = false;
         if (Active == null && Profiles.ProfileItems.Count == 0)
         {
             Toast?.Invoke(L.S("no_server"));
@@ -441,6 +442,9 @@ public class SatraCore : ReactiveObject
 
     public async Task DisconnectAsync()
     {
+        // any disconnect that is not followed by a connect (tray, kill switch, Off button) counts as "stay off":
+        // picking another server afterwards must not quietly turn Ports-only back on
+        _userOff = true;
         _connGen++;
         Set(ConnPhase.Disconnecting);
         _socksOn = false;
@@ -480,7 +484,13 @@ public class SatraCore : ReactiveObject
 
     public async Task UseAsync(ProfileItemModel p)
     {
-        await Profiles.SetDefaultServer(p.IndexId);
+        if (Phase == ConnPhase.On) await Profiles.SetDefaultServer(p.IndexId); // live: v2rayN reloads the core on the new server
+        else
+        {
+            // off: only remember the choice. v2rayN's SetDefaultServer also reloads (= starts) the core, which turned the app
+            // back On after the user had switched it off.
+            if (await ConfigHandler.SetDefaultServerIndex(AppManager.Instance.Config, p.IndexId) == 0) await Profiles.RefreshServers();
+        }
         Changed?.Invoke();
         // running (any mode): the core reloads on the new config; refresh the exit IP shown on Home
         if (Phase == ConnPhase.On) _ = Task.Run(async () => { await Task.Delay(1500); await RefreshActiveExitAsync(); });

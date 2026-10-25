@@ -104,6 +104,12 @@ public static class UsageHistory
             if (!SatraState.I.Usage.TryGetValue(key, out var d)) SatraState.I.Usage[key] = d = [];
             if (up > 0) d["u:" + id] = d.GetValueOrDefault("u:" + id) + up;
             if (down > 0) d["w:" + id] = d.GetValueOrDefault("w:" + id) + down;
+            try
+            {
+                if (!SatraState.I.UsageNames.ContainsKey(id) && SatraCore.I.Active is { } pi && pi.IndexId == id)
+                    SatraState.I.UsageNames[id] = pi.Remarks + "\t" + pi.Subid;
+            }
+            catch { }
         }
     }
 

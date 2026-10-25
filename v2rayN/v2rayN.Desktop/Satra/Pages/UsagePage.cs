@@ -181,8 +181,21 @@ public class UsagePage : IPage
     {
         var profiles = SatraCore.I.Profiles.ProfileItems.GroupBy(p => p.IndexId ?? "").ToDictionary(g => g.Key, g => g.First());
         var q = _search.Text?.Trim() ?? "";
-        var rows = per.Select(kv => (Id: kv.Key, kv.Value.Up, kv.Value.Down, P: profiles.GetValueOrDefault(kv.Key)))
-            .Select(r => (r.Id, r.Up, r.Down, Name: r.P != null ? Ui.CleanName(r.P.Remarks) : L.S("deleted_config"), Sub: r.P != null ? ServersPage.SubName(r.P.Subid) : ""))
+        // a subscription update re-creates config ids: map an old id to today's config with the same name (same sub first),
+        // else show the name it had, so history never turns into a list of "(removed config)"
+        ProfileItemModel? Resolve(string id)
+        {
+            if (profiles.TryGetValue(id, out var p)) return p;
+            if (!SatraState.I.UsageNames.TryGetValue(id, out var nm)) return null;
+            var parts = nm.Split('\t'); var rem = parts[0]; var sub = parts.Length > 1 ? parts[1] : "";
+            return SatraCore.I.Profiles.ProfileItems.FirstOrDefault(x => x.Remarks == rem && x.Subid == sub)
+                ?? SatraCore.I.Profiles.ProfileItems.FirstOrDefault(x => x.Remarks == rem);
+        }
+        string OldName(string id) => SatraState.I.UsageNames.TryGetValue(id, out var nm) ? Ui.CleanName(nm.Split('\t')[0]) + " · " + L.S("deleted_config") : L.S("deleted_config");
+        var rows = per.Select(kv => (Id: kv.Key, kv.Value.Up, kv.Value.Down, P: Resolve(kv.Key)))
+            .GroupBy(r => r.P?.IndexId ?? r.Id)
+            .Select(g => (Id: g.Key, Up: g.Sum(x => x.Up), Down: g.Sum(x => x.Down), g.First().P))
+            .Select(r => (r.Id, r.Up, r.Down, Name: r.P != null ? Ui.CleanName(r.P.Remarks) : OldName(r.Id), Sub: r.P != null ? ServersPage.SubName(r.P.Subid) : ""))
             .Where(r => q.Length == 0 || r.Name.Contains(q, StringComparison.OrdinalIgnoreCase) || r.Sub.Contains(q, StringComparison.OrdinalIgnoreCase))
             .OrderByDescending(r => r.Up + r.Down).Take(60).ToList();
         if (rows.Count == 0)

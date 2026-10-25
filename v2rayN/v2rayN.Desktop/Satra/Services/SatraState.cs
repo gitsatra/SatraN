@@ -100,6 +100,8 @@ public class SatraState
     public Dictionary<string, DayUsage> Days { get; set; } = [];
     /// <summary>yyyy-MM-dd → ("a:app" | "d:site") → bytes.</summary>
     public Dictionary<string, Dictionary<string, long>> Usage { get; set; } = [];
+    /// <summary>Config id → "remarks\tsubId" as it was when usage was recorded (sub updates re-create ids).</summary>
+    public Dictionary<string, string> UsageNames { get; set; } = [];
     /// <summary>Asset update metadata: "Geo"/"Rules" → version, "    public Dictionary<string, Dictionary<string, long>> Usage { get; set; } = [];lt;Kind    public Dictionary<string, Dictionary<string, long>> Usage { get; set; } = [];gt;.at" → ISO time.</summary>
     public Dictionary<string, string> Assets { get; set; } = [];
     /// <summary>v1.9: last executable path per process name (Usage icons/names).</summary>
