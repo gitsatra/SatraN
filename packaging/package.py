@@ -218,7 +218,7 @@ exit 0
     with open(os.path.join(root, "DEBIAN/control"), "w") as f:
         f.write(f"Package: satran\nVersion: {ver}\nArchitecture: amd64\nMaintainer: Satra <satra@localhost>\nInstalled-Size: {size}\n"
                 "Depends: libc6, libcap2-bin, libfontconfig1, libice6, libsm6, libx11-6, libxcursor1, libxext6, libxi6, libxrandr2\n"
-                "Section: net\nPriority: optional\nHomepage: https://github.com/liamlope/satran\n"
+                "Section: net\nPriority: optional\nHomepage: https://github.com/gitsatra/SatraN\n"
                 "Description: SatraN - premium desktop client for Satra (v2rayN fork)\n Xray based client with Satra Hub support.\n")
     for r, ds, fs in os.walk(root):
         for d in ds: os.chmod(os.path.join(r, d), 0o755)

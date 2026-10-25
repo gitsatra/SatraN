@@ -15,7 +15,49 @@ public static class SatraAppUpdate
 
     public static bool IsDebInstall => OperatingSystem.IsLinux() && AppContext.BaseDirectory.StartsWith("/opt/satran", StringComparison.Ordinal);
 
+    /// <summary>Public GitHub releases (fallback when the Hub is unreachable).</summary>
+    public const string GitHubRepo = "gitsatra/SatraN";
+
+    private static string? WantedAsset(string ver)
+    {
+        if (OperatingSystem.IsWindows()) return $"SatraN-Setup-{ver}.exe";
+        if (OperatingSystem.IsLinux()) return IsDebInstall ? $"satran_{ver}_amd64.deb" : $"SatraN-{ver}-linux-x64.tar.gz";
+        if (OperatingSystem.IsMacOS()) return $"SatraN-{ver}-osx-{(System.Runtime.InteropServices.RuntimeInformation.OSArchitecture == System.Runtime.InteropServices.Architecture.Arm64 ? "arm64" : "x64")}.app.zip";
+        return null;
+    }
+
     public static async Task<CheckResult> CheckAsync(CancellationToken ct = default)
+    {
+        var hub = await CheckHubAsync(ct);
+        if (hub.LatestTag != null) return hub;
+        return await CheckGitHubAsync(ct);
+    }
+
+    private static async Task<CheckResult> CheckGitHubAsync(CancellationToken ct)
+    {
+        try
+        {
+            using var doc = JsonDocument.Parse(await UpdNet.GetStringAsync($"https://api.github.com/repos/{GitHubRepo}/releases/latest", ct));
+            var root = doc.RootElement;
+            var ver = (root.GetProperty("tag_name").GetString() ?? "").TrimStart('v');
+            if (!IsNewer(ver, Identity.Version)) return new(false, ver, ver, null, null);
+            var want = WantedAsset(ver);
+            foreach (var a in root.GetProperty("assets").EnumerateArray())
+            {
+                if (a.GetProperty("name").GetString() != want) continue;
+                string? sha = a.TryGetProperty("digest", out var d) && d.ValueKind == JsonValueKind.String && d.GetString()!.StartsWith("sha256:") ? d.GetString()![7..] : null;
+                return new(true, ver, ver, a.GetProperty("browser_download_url").GetString(), want, sha);
+            }
+            return new(false, ver, ver, null, null);
+        }
+        catch (Exception ex)
+        {
+            Logging.SaveLog("SatraAppUpdate", ex);
+            return new(false, null, null, null, null);
+        }
+    }
+
+    private static async Task<CheckResult> CheckHubAsync(CancellationToken ct)
     {
         try
         {
@@ -23,10 +65,7 @@ public static class SatraAppUpdate
             var root = doc.RootElement;
             var ver = root.GetProperty("version").GetString() ?? "";
             if (!IsNewer(ver, Identity.Version)) return new(false, ver, ver, null, null);
-            string? want = null;
-            if (OperatingSystem.IsWindows()) want = $"SatraN-Setup-{ver}.exe";
-            else if (OperatingSystem.IsLinux()) want = IsDebInstall ? $"satran_{ver}_amd64.deb" : $"SatraN-{ver}-linux-x64.tar.gz";
-            else if (OperatingSystem.IsMacOS()) want = $"SatraN-{ver}-osx-{(System.Runtime.InteropServices.RuntimeInformation.OSArchitecture == System.Runtime.InteropServices.Architecture.Arm64 ? "arm64" : "x64")}.app.zip";
+            var want = WantedAsset(ver);
             if (want == null || !root.GetProperty("files").TryGetProperty(want, out var f)) return new(false, ver, ver, null, null);
             return new(true, ver, ver, UpdNet.HubDl + f.GetProperty("url").GetString(), want, f.GetProperty("sha256").GetString());
         }

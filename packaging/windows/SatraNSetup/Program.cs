@@ -5,7 +5,7 @@ using System.Net.Http;
 // Windows installer: find or download SatraN-*-win-x64.zip, extract, run Install-SatraN.ps1 elevated.
 
 const string Version = "1.5.0";
-const string Repo = "liamlope/satran";
+const string Repo = "gitsatra/SatraN";
 
 static string? FindZip(string beside)
 {
