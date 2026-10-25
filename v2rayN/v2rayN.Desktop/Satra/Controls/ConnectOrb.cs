@@ -22,9 +22,11 @@ public class ConnectOrb : Control
     {
         Cursor = new Cursor(StandardCursorType.Hand);
         _timer = new DispatcherTimer(TimeSpan.FromMilliseconds(16), DispatcherPriority.Render, (_, _) => Step());
-        _timer.Start();
+        AttachedToVisualTree += (_, _) => Kick();
+        DetachedFromVisualTree += (_, _) => _timer.Stop();
         PointerPressed += (_, e) =>
         {
+            Kick();
             _pressTarget = 0.93;
             _pressed = true;
             e.Pointer.Capture(this);
@@ -37,7 +39,7 @@ public class ConnectOrb : Control
             _pressed = false;
             e.Pointer.Capture(null);
         };
-        PointerEntered += (_, _) => _hover = true;
+        PointerEntered += (_, _) => { _hover = true; Kick(); };
         PointerExited += (_, _) => { _hover = false; if (!_pressed) _pressTarget = 1; };
     }
 
@@ -49,6 +51,7 @@ public class ConnectOrb : Control
             if (_phase == value) return;
             _phase = value;
             _phaseAt = DateTime.Now;
+            Kick();
         }
     }
 
@@ -63,7 +66,17 @@ public class ConnectOrb : Control
         var target = _phase is ConnPhase.Off ? 0 : 1;
         _fill += (target - _fill) * 0.12;
         InvalidateVisual();
+        // Idle: Off/Failed and settled → stop ticking (no CPU while nothing moves). Hidden window → stop.
+        var settled = Math.Abs(_pressTarget - _press) < 0.001 && Math.Abs(_pressVel) < 0.01 && Math.Abs(target - _fill) < 0.002
+            && (DateTime.Now - _phaseAt).TotalSeconds > 0.8;
+        var top = TopLevel.GetTopLevel(this);
+        if ((settled && _phase is ConnPhase.Off or ConnPhase.Failed && !_hover) || top is { IsVisible: false }) { _press = _pressTarget; _timer.Stop(); InvalidateVisual(); }
+        // Connected ripples are slow; 30 fps is plenty and halves the cost.
+        _timer.Interval = _phase == ConnPhase.On && settled && !_hover ? TimeSpan.FromMilliseconds(33) : TimeSpan.FromMilliseconds(16);
     }
+
+    /// <summary>Resume animation (phase change, hover, press, re-shown).</summary>
+    public void Kick() { if (!_timer.IsEnabled && this.IsAttachedToVisualTree()) _timer.Start(); }
 
     protected override Size MeasureOverride(Size availableSize) => new(220, 220);
 

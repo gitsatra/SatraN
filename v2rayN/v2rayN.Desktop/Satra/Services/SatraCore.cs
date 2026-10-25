@@ -108,8 +108,8 @@ public class SatraCore : ReactiveObject
             Speed?.Invoke(0, 0);
         }
         if (Phase == ConnPhase.On) SatraState.I.Today().Seconds++;
-        if (++_ticks % 30 == 0) SatraState.Save();
-        if (_ticks % 5 == 0) _ = WatchCoreAsync();
+        if (++_ticks % 30 == 0 && Phase == ConnPhase.On) SatraState.Save(); // nothing changes while Off
+        if (_ticks % 5 == 0) { _ = WatchCoreAsync(); if (Phase == ConnPhase.On) _ = UsageHistory.PollAsync(); }
         Ticked?.Invoke();
     }
 

@@ -23,7 +23,7 @@ public class ServersPage : IPage
     {
         _root.Children.Add(Ui.Row(Ui.Title(L.S("servers")), Ui.H(8,
             Ui.Btn(L.S("ping_all"), Ui.Kind.Ghost, () => _ = PingAllAsync(), "◎", 13),
-            Ui.Btn(L.S("speed_all"), Ui.Kind.Ghost, () => _ = SatraCore.I.RunTestAsync(ESpeedActionType.Speedtest), "↯", 13),
+            Ui.Btn(L.S("speed_all"), Ui.Kind.Ghost, () => SpeedSheet(SatraCore.I.Profiles.ProfileItems.ToList()), "↯", 13),
             Ui.Btn(L.S("add"), Ui.Kind.Tinted, () => _ = AddAsync(), "+", 13))));
 
         var smart = Ui.Card(Ui.Row(
@@ -58,6 +58,62 @@ public class ServersPage : IPage
     }
 
     private async Task AddAsync() => await SatraCore.I.AddFromClipboardAsync(await SatraShell.I.ClipboardText());
+
+    /// <summary>Download-only speed test with a live gauge; results sorted fastest first.</summary>
+    private void SpeedSheet(List<ProfileItemModel> list)
+    {
+        if (list.Count == 0) return;
+        var gauge = new Controls.SpeedGauge { HorizontalAlignment = HorizontalAlignment.Center };
+        var now = Ui.T("", 15, FontWeight.SemiBold);
+        now.HorizontalAlignment = HorizontalAlignment.Center;
+        var step = Ui.Caption("", P.Text3);
+        step.HorizontalAlignment = HorizontalAlignment.Center;
+        var results = new StackPanel { Spacing = 6 };
+        var done = new List<(ProfileItemModel P, double Mbps)>();
+        var cts = new CancellationTokenSource();
+        gauge.DetachedFromVisualTree += (_, _) => cts.Cancel();
+        Action close = () => { };
+        var stop = Ui.Btn(L.S("stop"), Ui.Kind.Ghost, () => { cts.Cancel(); close(); }, size: 13);
+        stop.HorizontalAlignment = HorizontalAlignment.Center;
+        close = SatraShell.I.Sheet(L.S("speed_test"), Ui.V(12, gauge, now, step, stop, results), 520);
+
+        void Paint()
+        {
+            results.Children.Clear();
+            var rank = 0;
+            foreach (var (pp, v) in done.OrderByDescending(d => d.Mbps))
+            {
+                var best = rank++ == 0 && v > 0;
+                var bar = Ui.Bar(v > 0 ? Controls.SpeedGauge.Frac(v) : 0, v <= 0 ? P.Danger : best ? P.Success : P.Accent, 5);
+                results.Children.Add(Ui.Enter(new Border { Background = P.B(best ? P.SuccessSoft : P.Fill), CornerRadius = Ui.RCtl, Padding = new Thickness(12, 8),
+                    Child = Ui.V(6, Ui.Row(Ui.T($"{(best ? "★ " : "")}{Ui.CleanName(pp.Remarks)}", 13, FontWeight.SemiBold),
+                        Ui.T(v > 0 ? $"{v:0.0} Mbps" : L.S("failed"), 13, FontWeight.Bold, v <= 0 ? P.Danger : best ? P.Success : P.Text)), bar) }));
+            }
+        }
+
+        _ = Task.Run(async () =>
+        {
+            for (var i = 0; i < list.Count && !cts.IsCancellationRequested; i++)
+            {
+                var p = list[i];
+                var idx = i;
+                Dispatcher.UIThread.Post(() => { now.Text = Ui.CleanName(p.Remarks); step.Text = list.Count > 1 ? L.F("speed_n", idx + 1, list.Count) : L.S("speed_dl"); gauge.Set(0, 0); });
+                double v;
+                try { v = await LiveSpeed.RunAsync(p, (m, pr) => Dispatcher.UIThread.Post(() => gauge.Set(m, pr)), cts.Token); }
+                catch (OperationCanceledException) { break; }
+                Dispatcher.UIThread.Post(() => { gauge.Set(Math.Max(0, v), 1, true); done.Add((p, v)); Paint(); });
+                if (list.Count > 1) await Task.Delay(700);
+            }
+            Dispatcher.UIThread.Post(() =>
+            {
+                step.Text = cts.IsCancellationRequested ? "" : L.S("speed_done");
+                var best = done.Where(d => d.Mbps > 0).OrderByDescending(d => d.Mbps).FirstOrDefault();
+                if (best.P != null) { now.Text = "★ " + Ui.CleanName(best.P.Remarks); gauge.Set(best.Mbps, 1, true); }
+                stop.Content = L.S("close");
+                UpdatePingsInPlace();
+            });
+        });
+    }
 
     private async Task PingAllAsync()
     {
@@ -100,7 +156,7 @@ public class ServersPage : IPage
             if (_pingHosts.TryGetValue(id, out var host))
                 host.Content = PingPill(Delay(p), _pinging && p.Delay == 0);
             if (_speedHosts.TryGetValue(id, out var sh) && !string.IsNullOrEmpty(p.SpeedVal) && p.SpeedVal != "0")
-                sh.Content = Ui.Caption(p.SpeedVal + (decimal.TryParse(p.SpeedVal, out _) ? " MB/s" : ""), P.Text2);
+                sh.Content = Ui.Caption(decimal.TryParse(p.SpeedVal, out var mbs) ? $"↓ {mbs * 8:0.#} Mbps" : p.SpeedVal, P.Text2);
         }
     }
 
@@ -192,7 +248,7 @@ public class ServersPage : IPage
 
         var right = new List<Control> { speedHost, pingHost };
         right.Add(Ui.IconBtn("◎", () => _ = SatraCore.I.RunTestAsync(ESpeedActionType.Realping, [p]), L.S("ping"), P.Text2, 14));
-        right.Add(Ui.IconBtn("↯", () => _ = SatraCore.I.RunTestAsync(ESpeedActionType.Speedtest, [p]), L.S("speed"), P.Text2, 14));
+        right.Add(Ui.IconBtn("↯", () => SpeedSheet([p]), L.S("speed"), P.Text2, 14));
 
         var card = Ui.Card(Ui.Row(left, Ui.H(6, right.ToArray())), new Thickness(12, 10), isActive ? P.Lerp(P.Surface, P.Success, 0.08) : null);
         if (isActive) { card.BorderBrush = P.B(P.Success, 0.45); card.BorderThickness = new Thickness(1); }

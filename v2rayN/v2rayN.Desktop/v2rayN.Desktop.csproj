@@ -1,6 +1,8 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
 	<PropertyGroup>
+		<SatelliteResourceLanguages>en;fa;ru</SatelliteResourceLanguages>
+		<ConcurrentGarbageCollection>false</ConcurrentGarbageCollection>
 		<OutputType>WinExe</OutputType>
 		<ApplicationIcon>Assets\v2rayN.ico</ApplicationIcon>
 		<ApplicationManifest>app.manifest</ApplicationManifest>

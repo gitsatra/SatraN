@@ -54,6 +54,11 @@ def zipdir(src, zpath, prefix):
 work = tempfile.mkdtemp()
 app = os.path.join(work, "SatraN")
 shutil.copytree(pub, app)
+# size: drop debugger/crash-dump helpers that end users never need
+for junk in ("createdump", "libmscordaccore.so", "libmscordbi.so", "mscordaccore.dll", "mscordbi.dll", "createdump.exe"):
+    jp = os.path.join(app, junk)
+    if os.path.exists(jp):
+        os.remove(jp)
 inject_core(app)
 os.chmod(os.path.join(app, exe), 0o755)
 

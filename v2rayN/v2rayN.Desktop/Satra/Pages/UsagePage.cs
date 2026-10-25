@@ -15,6 +15,36 @@ public class UsagePage : IPage
     private readonly TextBlock _sumDown = Ui.Num(Ui.T("", 22, FontWeight.Bold)), _sumUp = Ui.Num(Ui.T("", 22, FontWeight.Bold)), _sumTotal = Ui.Num(Ui.T("", 22, FontWeight.Bold)), _sumHours = Ui.Num(Ui.T("", 22, FontWeight.Bold));
     private readonly StackPanel _limits = new() { Spacing = 0 };
     private readonly StackPanel _live = new() { Spacing = 0 };
+    private readonly StackPanel _top = new() { Spacing = 0 };
+    private TextBox _search = null!;
+    private char _topKind = 'a';
+    private int _topDays = 7;
+
+    private void BuildTop()
+    {
+        _top.Children.Clear();
+        var rows = UsageHistory.Top(_topKind, _topDays, _search.Text);
+        if (rows.Count == 0)
+        {
+            _top.Children.Add(new Border { Padding = new Thickness(16, 14), Child = Ui.Caption(L.S("usage_history_empty"), P.Text3) });
+            return;
+        }
+        var max = Math.Max(1, rows[0].Bytes);
+        var first = true;
+        foreach (var (name, bytes) in rows)
+        {
+            if (!first) _top.Children.Add(new Border { Height = 1, Background = P.B(P.Separator), Margin = new Thickness(14, 0, 0, 0) });
+            first = false;
+            var key = _topKind == 'd' ? "host:" + name : name;
+            var blocked = SatraState.I.Limits.Any(l => l.Enabled && l.Values.Any(v => v.Equals(name, StringComparison.OrdinalIgnoreCase)));
+            var btn = blocked
+                ? Ui.Btn(L.S(_topKind == 'd' ? "unblock_site" : "unblock_app"), Ui.Kind.Tinted, () => { UnblockProcess(key, name); BuildTop(); }, null, 12)
+                : Ui.Btn(L.S(_topKind == 'd' ? "block_site" : "block_app"), Ui.Kind.Ghost, () => { BlockProcess(key, name); BuildTop(); }, null, 12);
+            _top.Children.Add(new Border { Padding = new Thickness(14, 10), Child = Ui.V(6,
+                Ui.Row(Ui.T(name, 13.5, FontWeight.SemiBold), Ui.H(10, Ui.T(Ui.Bytes(bytes), 13, FontWeight.Bold, P.Text2), btn)),
+                Ui.Bar((double)bytes / max, blocked ? P.Danger : P.Accent, 4)) });
+        }
+    }
     private int _days = 7;
     private readonly Border _seg7, _seg30;
     private readonly DispatcherTimer _liveTimer;
@@ -45,6 +75,15 @@ public class UsagePage : IPage
         _body.Children.Add(Ui.Card(sums, new Thickness(20, 16)));
         _body.Children.Add(Ui.Card(Ui.V(12, Ui.Section(L.S("data_per_day")), _data), new Thickness(20, 16)));
         _body.Children.Add(Ui.Card(Ui.V(12, Ui.Section(L.S("hours_per_day")), _hours), new Thickness(20, 16)));
+        // Persisted history: top apps / top sites per day, week, month — with search and one-tap block
+        _search = Ui.Input(L.S("search_usage"));
+        _search.Width = 220;
+        _search.TextChanged += (_, _) => BuildTop();
+        var kindSeg = SettingsPage.Segmented([L.S("top_apps"), L.S("top_sites")], 0, i => { _topKind = i == 0 ? 'a' : 'd'; BuildTop(); });
+        var spanSeg = SettingsPage.Segmented([L.S("today"), L.S("week"), L.S("month")], 1, i => { _topDays = i switch { 0 => 1, 1 => 7, _ => 30 }; BuildTop(); });
+        _body.Children.Add(Ui.Row(Ui.Section(L.S("usage_history")), _search));
+        _body.Children.Add(Ui.H(10, kindSeg, spanSeg));
+        _body.Children.Add(new Border { Background = P.B(P.Surface), CornerRadius = Ui.RCard, ClipToBounds = true, Child = _top });
         _body.Children.Add(Ui.Section(L.S("live_apps")));
         _body.Children.Add(new Border { Background = P.B(P.Surface), CornerRadius = Ui.RCard, ClipToBounds = true, Child = _live });
         _body.Children.Add(Ui.Row(Ui.Section(L.S("local_limits")), Ui.Btn(L.S("add_limit"), Ui.Kind.Tinted, () => AddLimitSheet(), "+", 13)));
@@ -77,6 +116,7 @@ public class UsagePage : IPage
         _sumTotal.Text = Ui.Bytes(u.Sum(x => (x?.Up ?? 0) + (x?.Down ?? 0)));
         _sumHours.Text = $"{u.Sum(x => x?.Seconds ?? 0) / 3600.0:0.#} h";
         BuildLimits();
+        BuildTop();
         _ = RefreshLiveAsync();
     }
 
@@ -180,6 +220,7 @@ public class UsagePage : IPage
         _ = SatraCore.I.ApplyLocalLimitsAsync();
         _limSig = "";
         BuildLimits();
+        BuildTop();
         _ = RefreshLiveAsync();
     }
 
@@ -194,6 +235,7 @@ public class UsagePage : IPage
         _ = SatraCore.I.ApplyLocalLimitsAsync();
         _limSig = "";
         BuildLimits();
+        BuildTop();
         _ = RefreshLiveAsync();
     }
 

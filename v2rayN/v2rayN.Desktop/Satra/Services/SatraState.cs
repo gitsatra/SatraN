@@ -85,6 +85,8 @@ public class SatraState
     public Dictionary<string, SubMeta> Subs { get; set; } = [];
     public Dictionary<string, ExitGeo> Geo { get; set; } = [];
     public Dictionary<string, DayUsage> Days { get; set; } = [];
+    /// <summary>yyyy-MM-dd → ("a:app" | "d:site") → bytes.</summary>
+    public Dictionary<string, Dictionary<string, long>> Usage { get; set; } = [];
     public List<LocalLimit> Limits { get; set; } = [];
 
     [JsonIgnore] public static SatraState I { get; private set; } = new();

@@ -147,6 +147,7 @@ public class HomePage : IPage
     {
         var c = SatraCore.I;
         _orb.Phase = c.Phase;
+        _orb.Kick();
         (_status.Text, _hint.Text, var col) = c.Phase switch
         {
             ConnPhase.On => (L.S("connected"), L.S("tap_disconnect"), P.Success),
