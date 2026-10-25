@@ -175,6 +175,7 @@ public class SettingsPage : IPage
             Ui.ListRow(L.S("language"), null, lang, glyph: "文"),
             Ui.ListRow(L.S("this_device"), "Satra Hub", devName, glyph: "▢"),
             Ui.ListRow(L.S("auto_update"), L.S("auto_update_subs_d"), Ui.Switch(st.AutoUpdate, v => { st.AutoUpdate = v; SatraState.Save(); }), glyph: "⟳"),
+            Ui.ListRow(L.S("auto_start"), L.S("auto_start_d"), Ui.Switch(st.AutoStart, v => { st.AutoStart = v; SatraState.Save(); }), glyph: "⌁"),
             Ui.ListRow(L.S("autostart"), null, Ui.Switch(Cfg.GuiItem.AutoRun, async v => { Cfg.GuiItem.AutoRun = v; await AutoStartupHandler.UpdateTask(Cfg); await ConfigHandler.SaveConfig(Cfg); }), glyph: "⏻"),
             Ui.ListRow(L.S("updates"), L.S("updates_d"), Ui.T("›", 18, FontWeight.Bold, P.Text3), () => { _cat = "updates"; Build(true); }, "↓")));
     }
