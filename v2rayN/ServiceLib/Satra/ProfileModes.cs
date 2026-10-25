@@ -63,9 +63,10 @@ public static class ProfileModes
         var outs = Objs(o["outbounds"]).ToList();
         var proxies = outs.Where(IsProxy).ToList();
         var secure = mode is Secure or Fortress;
-        if (mode is Game or Stream) foreach (var p in proxies) p["mux"] = new JsonObject { ["enabled"] = false, ["concurrency"] = -1 };
+        var muxable = proxies.Where(p => (string?)p["protocol"] is "vmess" or "vless" or "trojan" or "shadowsocks").ToList();
+        if (mode is Game or Stream) foreach (var p in muxable) p["mux"] = new JsonObject { ["enabled"] = false, ["concurrency"] = -1 };
         if (mode == Eco)
-            foreach (var p in proxies)
+            foreach (var p in muxable)
             {
                 var vision = p["settings"]?["vnext"] is JsonArray vn && vn.ToJsonString().Contains("\"flow\":\"xtls");
                 var reality = (string?)p["streamSettings"]?["security"] == "reality";
@@ -140,10 +141,11 @@ public static class ProfileModes
     {
         var proxies = Objs(o["outbounds"]).Where(IsProxy).ToList();
         var secure = mode is Secure or Fortress;
-        if (mode is Game or Stream) foreach (var p in proxies) p["multiplex"] = new JsonObject { ["enabled"] = false };
+        static bool MuxCapable(JsonObject p) => (string?)p["type"] is "vmess" or "vless" or "trojan" or "shadowsocks";
+        if (mode is Game or Stream) foreach (var p in proxies.Where(MuxCapable)) p["multiplex"] = new JsonObject { ["enabled"] = false };
         if (mode == Eco)
             foreach (var p in proxies)
-                if (string.IsNullOrEmpty((string?)p["flow"]) && p["tls"]?["reality"] == null && (string?)p["type"] is "vmess" or "vless" or "trojan" or "shadowsocks")
+                if (string.IsNullOrEmpty((string?)p["flow"]) && p["tls"]?["reality"] == null && MuxCapable(p))
                     p["multiplex"] = new JsonObject { ["enabled"] = true, ["protocol"] = "h2mux", ["max_connections"] = 1, ["max_streams"] = 8 };
         if (secure)
             foreach (var p in proxies)
