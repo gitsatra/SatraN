@@ -2,6 +2,7 @@ using Avalonia.Platform.Storage;
 using System.Text.Json.Nodes;
 using Avalonia.Layout;
 using v2rayN.Desktop.Satra.Services;
+using v2rayN.Desktop.Satra.Controls;
 
 namespace v2rayN.Desktop.Satra.Pages;
 
@@ -12,8 +13,22 @@ public class SubsPage : IPage
     private readonly StackPanel _list = new() { Spacing = 12, Margin = new Thickness(0, 18, 0, 28) };
     public Control View => _root;
     private Button _allBtn = null!;
+    private ProgressRing _allRing = new(26);
     private readonly HashSet<string> _updating = [], _hidden = [];
     private readonly Border _allBar = new() { Padding = new Thickness(16, 12), CornerRadius = new CornerRadius(14) };
+
+    private readonly Dictionary<string, ProgressRing> _rings = [];
+    private readonly Dictionary<string, bool> _result = [];
+    private static void Detach(Control c)
+    {
+        switch (c.Parent) { case ContentControl cc: cc.Content = null; break; case Border b: b.Child = null; break; case Panel p: p.Children.Remove(c); break; }
+    }
+    private ProgressRing RingFor(string id, double size)
+    {
+        if (!_rings.TryGetValue(id, out var r)) _rings[id] = r = new ProgressRing(size);
+        Detach(r); r.Width = r.Height = size;
+        return r;
+    }
 
     private static Control Spinner(Color c, double size = 14)
     {
@@ -32,13 +47,22 @@ public class SubsPage : IPage
     private async Task UpdateOneAsync(SubItem s, bool quiet = false)
     {
         if (!_updating.Add(s.Id)) return;
+        _rings.Remove(s.Id);
         _ = BuildAsync();
+        var ok = true;
         try { await SatraCore.I.UpdateSubsAsync(s.Id); }
-        catch (Exception ex) { Logging.SaveLog("satra sub update", ex); }
-        finally { _updating.Remove(s.Id); }
+        catch (Exception ex) { ok = false; Logging.SaveLog("satra sub update", ex); }
+        SatraState.I.Subs.TryGetValue(s.Id, out var m);
+        if (m?.Error is { Length: > 0 }) ok = false;
+        // the ring fills and draws ✓/✕ in place, then the card settles into its new content
+        if (_rings.TryGetValue(s.Id, out var ring)) ring.Done(ok);
+        _result[s.Id] = ok;
+        await BuildAsync();
+        await Task.Delay(1300);
+        _updating.Remove(s.Id); _result.Remove(s.Id);
+        _rings.Remove(s.Id);
         await BuildAsync();
         if (quiet) return;
-        SatraState.I.Subs.TryGetValue(s.Id, out var m);
         var n = SatraCore.I.Profiles.ProfileItems.Count(p => p.Subid == s.Id);
         SatraShell.I.Toast(m?.Error is { Length: > 0 } e ? $"✕ {e}" : $"✓ {L.F("sub_updated_n", n)}");
     }
@@ -48,19 +72,23 @@ public class SubsPage : IPage
         var subs = (await AppManager.Instance.SubItems() ?? []).Where(x => x.Enabled && !_hidden.Contains(x.Id)).ToList();
         if (subs.Count == 0 || _updating.Count > 0) return;
         _allBtn.IsEnabled = false;
+        _allRing = new ProgressRing(26) { Value = 0 };
         _allBar.Background = P.B(P.Surface);
         _allBar.IsVisible = true;
         var fails = 0;
         for (var i = 0; i < subs.Count; i++)
         {
-            _allBar.Child = Ui.V(8, Ui.Row(Ui.H(8, Spinner(P.Accent), Ui.T(L.F("updating_n", i + 1, subs.Count), 13.5, FontWeight.SemiBold)), Ui.Caption(DisplayName(subs[i]), P.Text3)),
-                Ui.Bar((double)i / subs.Count, P.Accent, 6));
+            _allRing.Value = (double)i / subs.Count;
+            Detach(_allRing);
+            _allBar.Child = Ui.H(12, _allRing, Ui.V(2, Ui.T(L.F("updating_n", i + 1, subs.Count), 13.5, FontWeight.SemiBold), Ui.Caption(DisplayName(subs[i]), P.Text3)));
             await UpdateOneAsync(subs[i], quiet: true);
             if (SatraState.I.Subs.TryGetValue(subs[i].Id, out var m) && m.Error != null) fails++;
         }
-        _allBar.Child = Ui.V(8, Ui.T(fails == 0 ? "✓ " + L.S("all_updated") : L.F("updated_with_errors", subs.Count - fails, fails), 13.5, FontWeight.SemiBold, fails == 0 ? P.Success : P.Warning), Ui.Bar(1, fails == 0 ? P.Success : P.Warning, 6));
+        _allRing.Value = 1; _allRing.Done(fails == 0);
+        Detach(_allRing);
+        _allBar.Child = Ui.H(12, _allRing, Ui.T(fails == 0 ? L.S("all_updated") : L.F("updated_with_errors", subs.Count - fails, fails), 13.5, FontWeight.SemiBold, fails == 0 ? P.Success : P.Warning));
         _allBtn.IsEnabled = true;
-        DispatcherTimer.RunOnce(() => _allBar.IsVisible = false, TimeSpan.FromSeconds(3));
+        DispatcherTimer.RunOnce(() => _allBar.IsVisible = false, TimeSpan.FromSeconds(2.4));
     }
 
     private void EditSheet(SubItem s)
@@ -228,7 +256,7 @@ public class SubsPage : IPage
         st.Subs.TryGetValue(s.Id, out var m);
         var n = SatraCore.I.Profiles.ProfileItems.Count(p => p.Subid == s.Id);
         var pings = ""; // v1.9: pings update their pill in place (no card rebuild while pinging)
-        return $"{s.Remarks}{s.AutoUpdateInterval}{s.Enabled}{s.Url}{s.Sort}{n}{_updating.Contains(s.Id)}{_open.Contains(s.Id)}{pings}{st.Hub.ContainsKey(s.Id)}{L.Lang}"
+        return $"{s.Remarks}{s.AutoUpdateInterval}{s.Enabled}{s.Url}{s.Sort}{n}{_updating.Contains(s.Id)}{(_result.TryGetValue(s.Id, out var rr) ? rr : (bool?)null)}{_open.Contains(s.Id)}{pings}{st.Hub.ContainsKey(s.Id)}{L.Lang}"
             + (m == null ? "" : $"{m.Fetched}{m.Error}{m.Up + m.Down}{m.Total}{m.Expire}{m.Title}{m.Announce}{m.RenewUrl}{m.SupportUrl}{m.HubBase}");
     }
 
@@ -324,21 +352,36 @@ public class SubsPage : IPage
             : L.S("never_updated");
         var subMeta = (SatraState.I.Hub.ContainsKey(s.Id) ? "Satra Hub · " : "") + $"{HostOf(s.Url)} · {L.F("configs_count", cfgCount)} · {updated}";
 
-        var tile = new Border
+        // header: icon tile (becomes the progress ring while updating) · name + facts · update · on/off
+        var busy = _updating.Contains(s.Id);
+        var tileInner = new Panel();
+        tileInner.Children.Add(new TextBlock
         {
-            Width = 44, Height = 44, CornerRadius = Ui.RCtl,
-            Background = P.B(s.Enabled ? P.AccentSoft : P.Fill),
-            Child = new TextBlock
-            {
-                Text = "▣", FontSize = 20, Foreground = P.B(s.Enabled ? P.Accent : P.Text3),
-                HorizontalAlignment = Avalonia.Layout.HorizontalAlignment.Center,
-                VerticalAlignment = Avalonia.Layout.VerticalAlignment.Center,
-            },
-        };
-        kids.Add(Ui.Row(Ui.H(12, tile, Ui.V(3, Ui.T(title, 17, FontWeight.Bold), Ui.Caption(subMeta, P.Text3))), enabled));
-        if (_updating.Contains(s.Id))
-            kids.Add(new Border { Background = P.B(P.AccentSoft), CornerRadius = Ui.RCtl, Padding = new Thickness(12, 8),
-                Child = Ui.H(8, Spinner(P.Accent), Ui.T(L.S("updating"), 13, FontWeight.SemiBold, P.Accent)) });
+            Text = "▣", FontSize = 18, Foreground = P.B(s.Enabled ? P.Accent : P.Text3), Opacity = busy ? 0 : 1,
+            HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center,
+        });
+        if (busy) { var ring = RingFor(s.Id, 30); ring.HorizontalAlignment = HorizontalAlignment.Center; ring.VerticalAlignment = VerticalAlignment.Center; tileInner.Children.Add(ring); }
+        var tile = new Border { Width = 42, Height = 42, CornerRadius = Ui.RCtl, Background = P.B(s.Enabled ? P.AccentSoft : P.Fill), Child = tileInner };
+        var nameTb = Ui.T(title, 15.5, FontWeight.SemiBold);
+        nameTb.TextTrimming = TextTrimming.CharacterEllipsis;
+        var facts = new WrapPanel { Orientation = Orientation.Horizontal };
+        void Fact(Control c) { c.Margin = new Thickness(0, 0, 10, 0); c.VerticalAlignment = VerticalAlignment.Center; facts.Children.Add(c); }
+        Fact(Ui.T(L.F("configs_count", cfgCount), 12, FontWeight.Medium, P.Text2));
+        var res = _result.TryGetValue(s.Id, out var rok) ? rok : (bool?)null;
+        Fact(Ui.T(res == true ? L.S("sub_ok") : res == false ? L.S("sub_fail") : busy ? L.S("sub_updating") : updated, 12, res == null ? FontWeight.Normal : FontWeight.SemiBold,
+            res == true ? P.Success : res == false ? P.Danger : busy ? P.Accent : P.Text3));
+        if (SatraState.I.Hub.ContainsKey(s.Id)) Fact(Ui.Pill("Satra Hub", P.Info, P.InfoSoft, 10));
+        if (HostOf(s.Url) is { Length: > 0 } host) Fact(Ui.T(Ui.Ltr(host), 12, FontWeight.Normal, P.Text3));
+        var updBtn = Ui.IconBtn("⟳", () => _ = UpdateOneAsync(s), L.S("update"), P.Text2, 15);
+        updBtn.IsEnabled = !busy;
+        var right = Ui.H(10, updBtn, enabled);
+        foreach (var k in right.Children) k.VerticalAlignment = VerticalAlignment.Center;
+        var head = new Grid { ColumnDefinitions = new ColumnDefinitions("Auto,*,Auto") };
+        var mid = Ui.V(3, nameTb, facts); mid.Margin = new Thickness(12, 0); mid.VerticalAlignment = VerticalAlignment.Center;
+        Grid.SetColumn(mid, 1); Grid.SetColumn(right, 2);
+        head.Children.Add(tile); head.Children.Add(mid); head.Children.Add(right);
+        kids.Add(head);
+        if (busy) { }
         else if (m?.Error is { Length: > 0 } err)
             kids.Add(new Border { Background = P.B(P.DangerSoft), CornerRadius = Ui.RCtl, Padding = new Thickness(12, 8),
                 Child = Ui.H(8, Ui.T("⚠", 14, FontWeight.Normal, P.Danger), Ui.V(2, Ui.T(L.S("update_failed"), 13, FontWeight.SemiBold, P.Danger),
@@ -353,10 +396,10 @@ public class SubsPage : IPage
             {
                 var left = Math.Max(0, m.Total - used);
                 var leftPct = (int)Math.Round(100 * (1 - frac));
-                kids.Add(Ui.Bar(frac, col, 10));
+                kids.Add(Ui.Bar(frac, col, 6));
                 kids.Add(Ui.Row(
                     Ui.V(4,
-                        Ui.T(L.F("quota_left", Ui.Bytes(left), Ui.Bytes(m.Total)), 16, FontWeight.Bold, col, TextWrapping.Wrap),
+                        Ui.T(L.F("quota_left", Ui.Bytes(left), Ui.Bytes(m.Total)), 13.5, FontWeight.SemiBold, col, TextWrapping.Wrap),
                         Ui.Caption($"{Ui.Bytes(used)} {L.S("used")} · {L.F("quota_pct", Math.Clamp(leftPct, 0, 100))}", P.Text3)),
                     ExpirePill(m)));
             }
@@ -375,11 +418,18 @@ public class SubsPage : IPage
         }
 
 
-        var upd = Ui.Btn(L.S("update"), Ui.Kind.Ghost, () => _ = UpdateOneAsync(s), "⟳", 13);
-        upd.IsEnabled = !_updating.Contains(s.Id);
-        var actions = new List<Control> { upd,
-            Ui.Btn(L.S("edit"), Ui.Kind.Ghost, () => EditSheet(s), "✎", 13),
-            Ui.Btn(L.S("delete"), Ui.Kind.Ghost, () => DeleteSheet(s), "🗑", 13) };
+        var open = _open.Contains(s.Id);
+        var chev = Ui.T("›", 15, FontWeight.SemiBold, P.Text2);
+        chev.RenderTransform = new RotateTransform(open ? 90 : 0); chev.RenderTransformOrigin = RelativePoint.Center;
+        var srvBtn = Ui.Btn(L.S("servers") + $"  {cfgCount}", Ui.Kind.Ghost, () =>
+        {
+            if (!_open.Remove(s.Id)) { _open.Add(s.Id); _ = PingGuard.All(SatraCore.I.Profiles.ProfileItems.Where(p => p.Subid == s.Id).ToList()); }
+            _ = BuildAsync();
+        }, null, 12.5);
+        srvBtn.Content = Ui.H(6, chev, Ui.T(L.S("servers"), 12.5, FontWeight.Medium, P.Text2), Ui.Pill(cfgCount.ToString(), P.Text2, P.Fill, 10));
+        var actions = new List<Control> { srvBtn,
+            Ui.IconBtn("✎", () => EditSheet(s), L.S("edit"), P.Text3, 13),
+            Ui.IconBtn("🗑", () => DeleteSheet(s), L.S("delete"), P.Text3, 13) };
         if (m?.RenewUrl is { Length: > 0 } ru) actions.Add(Ui.Btn(L.S("renew"), Ui.Kind.Primary, () => ProcUtils.ProcessStart(ru), size: 13));
         if (m?.SupportUrl is { Length: > 0 } su) actions.Add(Ui.Btn(L.S("support"), Ui.Kind.Tinted, () => ProcUtils.ProcessStart(su), size: 13));
         if (SatraState.I.Hub.ContainsKey(s.Id))
@@ -391,16 +441,11 @@ public class SubsPage : IPage
         {
             actions.Add(Ui.Btn(L.S("hub_register"), Ui.Kind.Tinted, async () => { await HubSync.EnsureRegisteredAsync(s); _ = BuildAsync(); }, size: 13));
         }
-        actions.Add(Ui.Btn(_open.Contains(s.Id) ? "▴ " + L.S("servers") : "▾ " + L.S("servers"), Ui.Kind.Ghost, () =>
-        {
-            if (!_open.Remove(s.Id)) { _open.Add(s.Id); _ = PingGuard.All(SatraCore.I.Profiles.ProfileItems.Where(p => p.Subid == s.Id).ToList()); }
-            _ = BuildAsync();
-        }, null, 13));
         actions.Add(Ui.IconBtn("↑", () => _ = MoveAsync(s, -1), L.S("move_up"), P.Text3, 13));
         actions.Add(Ui.IconBtn("↓", () => _ = MoveAsync(s, 1), L.S("move_down"), P.Text3, 13));
         kids.Add(new WrapPanel { Children = { Ui.H(8, actions.ToArray()) } });
-        if (_open.Contains(s.Id)) kids.Add(ServersOf(s));
-        return Ui.Card(Ui.V(14, kids.ToArray()), new Thickness(20, 16), s.Enabled ? null : P.Lerp(P.Surface, P.Bg, 0.5));
+        if (open) kids.Add(Ui.Enter(ServersOf(s)));
+        return Ui.Card(Ui.V(12, kids.ToArray()), new Thickness(18, 14), s.Enabled ? null : P.Lerp(P.Surface, P.Bg, 0.5));
     }
 
     private static Border ExpirePill(SubMeta m)
@@ -417,10 +462,10 @@ public class SubsPage : IPage
     private static string RelTime(long unixSec)
     {
         var ago = DateTimeOffset.UtcNow - DateTimeOffset.FromUnixTimeSeconds(unixSec);
-        if (ago.TotalMinutes < 1) return "now";
-        if (ago.TotalHours < 1) return $"{(int)ago.TotalMinutes}m";
-        if (ago.TotalDays < 1) return $"{(int)ago.TotalHours}h";
-        return $"{(int)ago.TotalDays}d";
+        if (ago.TotalMinutes < 1) return L.S("ago_now");
+        if (ago.TotalHours < 1) return L.F("ago_m", (int)ago.TotalMinutes);
+        if (ago.TotalDays < 1) return L.F("ago_h", (int)ago.TotalHours);
+        return L.F("ago_d", (int)ago.TotalDays);
     }
 
     private static string HostOf(string url) => Uri.TryCreate(url, UriKind.Absolute, out var u) ? u.Host : "";

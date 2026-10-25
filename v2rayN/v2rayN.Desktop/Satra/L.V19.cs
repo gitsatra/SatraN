@@ -5,6 +5,19 @@ public static partial class L
 {
     private static readonly Dictionary<string, (string en, string fa, string ru)> Y = new()
     {
+        ["home_change_server"] = ("Change server", "تغییر سرور", "Сменить сервер"),
+        ["sub_servers"] = ("{0} servers", "{0} سرور", "Серверов: {0}"),
+        ["sub_updated"] = ("Updated {0}", "به‌روز شده {0}", "Обновлено {0}"),
+        ["sub_never"] = ("Never updated", "هنوز به‌روز نشده", "Ещё не обновлялась"),
+        ["sub_used"] = ("{0} of {1} used", "{0} از {1} مصرف شده", "Использовано {0} из {1}"),
+        ["sub_expires"] = ("Expires {0}", "انقضا {0}", "Истекает {0}"),
+        ["sub_ok"] = ("Updated", "به‌روز شد", "Обновлено"),
+        ["sub_fail"] = ("Update failed", "به‌روزرسانی ناموفق", "Ошибка обновления"),
+        ["sub_updating"] = ("Updating…", "در حال به‌روزرسانی…", "Обновление…"),
+        ["ago_now"] = ("just now", "همین الان", "только что"),
+        ["ago_m"] = ("{0} min ago", "{0} دقیقه پیش", "{0} мин назад"),
+        ["ago_h"] = ("{0} h ago", "{0} ساعت پیش", "{0} ч назад"),
+        ["ago_d"] = ("{0} d ago", "{0} روز پیش", "{0} дн назад"),
         ["mode_info"] = ("About {0}", "دربارهٔ {0}", "О режиме {0}"),
         ["mode_info_note"] = ("Your own settings are never overwritten; switching back to Normal restores them exactly.", "تنظیمات خودتان هرگز بازنویسی نمی‌شود؛ با برگشت به عادی دقیقاً همان‌ها برمی‌گردند.", "Ваши настройки не перезаписываются; возврат в «Обычный» восстанавливает их полностью."),
         ["mode_info_tun"] = ("+ more in Whole device (TUN) mode", "+ موارد بیشتر در حالت کل دستگاه (TUN)", "+ ещё в режиме «Всё устройство»"),

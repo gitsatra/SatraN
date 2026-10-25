@@ -9,14 +9,14 @@ namespace v2rayN.Desktop.Satra.Pages;
 public class HomePage : IPage
 {
     private readonly Grid _root = new() { Margin = new Thickness(36, 28, 36, 28), RowDefinitions = new RowDefinitions("Auto,*,Auto,Auto,Auto,Auto") };
-    private readonly ContentControl _modeHost = new() { MaxWidth = 640, Margin = new Thickness(0, 0, 0, 18) };
+    private readonly ContentControl _modeHost = new() { HorizontalContentAlignment = HorizontalAlignment.Stretch, Margin = new Thickness(0, 0, 0, 18) };
     private readonly ContentControl _routeHost = new() { MaxWidth = 640 };
     private string _modeSig = "";
     private string _routeSig = "";
     private readonly ConnectOrb _orb = new() { Width = 136, Height = 136, HorizontalAlignment = HorizontalAlignment.Center, IsVisible = false };
     private readonly PowerSwitch _power = new();
     private readonly ContentControl _powerPing = new() { VerticalAlignment = VerticalAlignment.Center, Width = 72, HorizontalContentAlignment = HorizontalAlignment.Center };
-    private readonly StackPanel _modesStrip = new() { Orientation = Orientation.Horizontal, Spacing = 6, HorizontalAlignment = HorizontalAlignment.Center };
+    private readonly UniformGrid _modesStrip = new() { Rows = 1, Margin = new Thickness(-4, 0) };
     private string _stripSig = "";
     private ConnPhase _lastPhase = ConnPhase.Off;
     private Border? _secBtn;
@@ -77,21 +77,24 @@ public class HomePage : IPage
     private void ApplyDensity(int d)
     {
         _density = d;
-        var orb = d switch { 0 => 136, 1 => 112, 2 or 3 => 96, _ => 84 };
-        _orb.Width = _orb.Height = orb;
-        if (d <= 1) _power.SetSize(268, 68); else if (d <= 3) _power.SetSize(248, 60); else _power.SetSize(232, 54);
-        _modesStrip.Spacing = d >= 3 ? 4 : 6;
-        _root.Margin = d >= 2 ? new Thickness(32, 18, 32, 14) : new Thickness(36, 28, 36, 24);
-        _center.Margin = d >= 2 ? new Thickness(0, 4, 0, 10) : new Thickness(0, 12, 0, 18);
-        _spark.IsVisible = d == 0;
+        _root.Margin = d >= 2 ? new Thickness(32, 18, 32, 14) : new Thickness(40, 30, 40, 26);
+        _hero.Padding = d >= 2 ? new Thickness(22, 16) : new Thickness(26, 22);
+        _hero.Margin = new Thickness(0, d >= 2 ? 12 : 20, 0, d >= 2 ? 14 : 22);
+        _heroState.FontSize = d >= 3 ? 19 : 22;
+        _spark.IsVisible = d == 0; _spark.Height = 44;
         foreach (var t in _tileDescs) t.IsVisible = d < 1;
         if (_smartCaption != null) _smartCaption.IsVisible = d < 2;
-        if (_statCard != null) _statCard.IsVisible = d < 3 && _speedHost.Content == null;
-        _miniSpeed.IsVisible = d >= 3; _miniSpeed.Opacity = SatraCore.I.Phase == ConnPhase.On ? 1 : 0;
-        _hint.MaxLines = d >= 4 ? 1 : 2; _hint.MinHeight = d >= 4 ? 18 : 36;
-        _modeHost.Margin = new Thickness(0, 0, 0, d >= 2 ? 10 : 18);
-        _server.Margin = new Thickness(0, 0, 0, d >= 2 ? 8 : 14);
+        _statCard?.SetValue(Visual.IsVisibleProperty, d < 4 && _speedHost.Content == null);
+        _miniSpeed.IsVisible = false;
+        _hint.IsVisible = d < 3 || SatraCore.I.Phase != ConnPhase.On; _hint.MaxLines = d >= 2 ? 1 : 2;
+        _modeHint.IsVisible = d < 2;
+        _modeHost.Margin = new Thickness(0, 0, 0, d >= 2 ? 12 : 20);
+        _modeSection.Margin = new Thickness(0, 0, 0, d >= 2 ? 12 : 20);
+        foreach (var t in _modeTiles) { t.Height = d >= 2 ? 38 : 58; if (t.Child is StackPanel sp) sp.Orientation = d >= 2 ? Orientation.Horizontal : Orientation.Vertical; }
+        _bottom.ColumnDefinitions = Bounds() < 760 ? new ColumnDefinitions("*,0,0") : new ColumnDefinitions("3*,16,2*");
     }
+    private readonly List<Border> _modeTiles = new();
+    private double Bounds() => _host?.Bounds.Width ?? 1000;
 
     /// Re-fit after content changes (new server card, mode text, update banner…).
     private void Refit() { if (_host != null) Dispatcher.UIThread.Post(() => Fit(_host.Bounds.Size, force: true), DispatcherPriority.Background); }
@@ -99,80 +102,149 @@ public class HomePage : IPage
     public static HomePage? Last;
     /// QA: layout facts for the "no scroll / no jump" checks.
     public string DevFacts() => $"density={_density} root={_root.DesiredSize.Height:0}/{_host?.Bounds.Height:0} rebuilds={PickRebuilds} rows=[{string.Join(" | ", _slots.Select(x => $"{x.Item?.Remarks}@{x.View.Bounds.Y:0}"))}]";
+    // ── v1.9 Home: one hero card (state + desktop toggle + exit), then Connection, Mode, and Server | Usage ──
+    private readonly TextBlock _heroState = Ui.T("", 22, FontWeight.SemiBold);
+    private readonly TextBlock _heroSub = Ui.T("", 13, FontWeight.Normal, P.Text2);
+    private readonly Border _heroDot = new() { Width = 10, Height = 10, CornerRadius = Ui.RPill, VerticalAlignment = VerticalAlignment.Center };
+    private readonly WrapPanel _heroMeta = new() { Orientation = Orientation.Horizontal };
+    private readonly TextBlock _modeHint = Ui.T("", 12, FontWeight.Normal, P.Text3);
+    private Border _hero = null!;
+    private StackPanel _heroText = null!;
+    private Control _modeSection = null!, _connSection = null!;
+    private Grid _bottom = null!;
+
     public HomePage()
     {
         Last = this;
-        var head = Ui.Row(Ui.Title(L.S("home")), Ui.H(8,
+        var head = Ui.Row(Ui.T(L.S("home"), 22, FontWeight.Bold), Ui.H(8,
             Ui.Btn(L.S("speed_home"), Ui.Kind.Ghost, () => ServersPage.SpeedInline(_speedHost, [SatraCore.I.Active], compact: true), "↯", 13),
             Ui.IconBtn("⟳", () => _ = SatraCore.I.UpdateSubsAsync(), L.S("update_all")),
             Ui.Btn(L.S("add"), Ui.Kind.Tinted, () => _ = AddAsync(), "+")));
-        Grid.SetRowSpan(_map, 6);
-        _root.Children.Add(_map); // first child = drawn behind everything
+        _root.RowDefinitions = new RowDefinitions("Auto,Auto,Auto,Auto,*");
         _root.Children.Add(Ui.V(10, head, _updateBtnHost));
         AutoUpdater.Changed += PaintUpdate;
         PaintUpdate();
 
-        _status.HorizontalAlignment = _hint.HorizontalAlignment = _timer.HorizontalAlignment = HorizontalAlignment.Center;
-        _orb.Clicked += () => _ = SatraCore.I.ToggleAsync();
+        // hero: state on the start side, a mouse-sized toggle + Security on the end side, quiet map behind the free space
+        _power.Compact = true;
+        _power.SetSize(58, 32);
         _power.Clicked += () => _ = SatraCore.I.ToggleAsync();
-        _status.IsVisible = false; // the switch carries the state label now (kept for QA facts)
-        _hint.TextWrapping = TextWrapping.Wrap; _hint.TextAlignment = TextAlignment.Center; _hint.MaxWidth = 460;
-        _hint.TextTrimming = TextTrimming.CharacterEllipsis;
-        _miniSpeed.HorizontalAlignment = HorizontalAlignment.Center;
-        _ports.MinHeight = 30; _hint.MinHeight = 36;
+        ToolTip.SetTip(_power, L.S("pw_tip"));
+        _orb.Clicked += () => _ = SatraCore.I.ToggleAsync();
+        _heroState.TextTrimming = _heroSub.TextTrimming = TextTrimming.CharacterEllipsis;
+        _hint.TextWrapping = TextWrapping.Wrap; _hint.MaxWidth = 520; _hint.HorizontalAlignment = HorizontalAlignment.Left; _hint.TextAlignment = TextAlignment.Start; _hint.Margin = new Thickness(0, 4, 0, 0); _hint.TextTrimming = TextTrimming.CharacterEllipsis; _hint.FontSize = 12.5; _hint.Foreground = P.B(P.Text3);
+        _heroMeta.Margin = new Thickness(0, 6, 0, 0);
+        var stateRow = Ui.H(10, _heroDot, _heroState);
+        _heroText = Ui.V(4, stateRow, _heroSub, _heroMeta, _hint);
+        _heroText.VerticalAlignment = VerticalAlignment.Center;
         _secBtn = SecurityButton();
-        var powerRow = Ui.H(12, _power, _powerPing, _secBtn);
-        powerRow.HorizontalAlignment = HorizontalAlignment.Center;
-        _modesStrip.Margin = new Thickness(0, 6, 0, 0);
-        var center = _center = Ui.V(8, _orb, powerRow, _status, _timer, _miniSpeed, _hint, _ports, _modesStrip);
-        center.Margin = new Thickness(0, 12, 0, 18);
-        center.VerticalAlignment = VerticalAlignment.Center;
-        center.HorizontalAlignment = HorizontalAlignment.Center;
-        Grid.SetRow(center, 1);
-        _map.Avoid = powerRow; _map.Band = center;
-        center.LayoutUpdated += (_, _) => _map.InvalidateVisual();
-        _root.Children.Add(center);
+        var ctl = Ui.H(14, _secBtn, _power);
+        ctl.VerticalAlignment = VerticalAlignment.Center;
+        var heroGrid = new Grid { ColumnDefinitions = new ColumnDefinitions("*,Auto") };
+        Grid.SetColumn(ctl, 1);
+        heroGrid.Children.Add(_heroText); heroGrid.Children.Add(ctl);
+        _map.Margin = new Thickness(0); _map.Avoid = _heroText; _map.Band = heroGrid;
+        var heroPanel = new Panel(); heroPanel.Children.Add(_map); heroPanel.Children.Add(heroGrid);
+        heroGrid.LayoutUpdated += (_, _) => _map.InvalidateVisual();
+        _hero = new Border { Background = P.B(P.Surface), CornerRadius = Ui.RCard, Padding = new Thickness(26, 22), ClipToBounds = true, Child = heroPanel, Margin = new Thickness(0, 18, 0, 0) };
+        _hero.Transitions = new Avalonia.Animation.Transitions { new Avalonia.Animation.BrushTransition { Property = Border.BorderBrushProperty, Duration = TimeSpan.FromMilliseconds(300) } };
+        _hero.BorderThickness = new Thickness(1);
+        Grid.SetRow(_hero, 1);
+        _root.Children.Add(_hero);
 
+        // connection type (how apps use it) + smart routing, then the VPN modes — two clearly separate sections
+        _connSection = _modeHost;
         Grid.SetRow(_modeHost, 2);
         _root.Children.Add(_modeHost);
-        Grid.SetRow(_routeHost, 3);
-        _root.Children.Add(_routeHost);
-        _server.Margin = new Thickness(0, 0, 0, 14);
-        _server.MaxWidth = 640;
-        Grid.SetRow(_server, 4);
-        _root.Children.Add(_server);
+        var modeHead = Ui.Row(Ui.Section(L.S("mode_title")), _modeHint);
+        _modeHint.TextTrimming = TextTrimming.CharacterEllipsis;
+        _modeSection = Ui.V(8, modeHead, _modesStrip);
+        _modeSection.Margin = new Thickness(0, 0, 0, 18);
+        Grid.SetRow(_modeSection, 3);
+        _root.Children.Add(_modeSection);
 
-        var stats = new Grid { ColumnDefinitions = new ColumnDefinitions("*,*,*") };
+        // bottom: server (active + best picks, pings in place) | usage summary
+        var stats = new Grid { ColumnDefinitions = new ColumnDefinitions("*,*") };
         Control Stat(string label, TextBlock big, TextBlock small, Color dot)
         {
-            var d = new Border { Width = 8, Height = 8, CornerRadius = Ui.RPill, Background = P.B(dot), VerticalAlignment = VerticalAlignment.Center };
-            return Ui.V(4, Ui.H(6, d, Ui.Section(label)), big, small);
+            var d = new Border { Width = 7, Height = 7, CornerRadius = Ui.RPill, Background = P.B(dot), VerticalAlignment = VerticalAlignment.Center };
+            return Ui.V(3, Ui.H(6, d, Ui.Section(label)), big, small);
         }
+        _down.FontSize = _up.FontSize = 19;
         var c1 = Stat(L.S("download"), _down, _downTot, P.Success);
         var c2 = Stat(L.S("upload"), _up, _upTot, P.Accent);
-        var c3 = Ui.V(4, Ui.Section(L.S("today")), _today, _modeChip);
         Grid.SetColumn(c2, 1);
-        Grid.SetColumn(c3, 2);
-        stats.Children.Add(c1);
-        stats.Children.Add(c2);
-        stats.Children.Add(c3);
-        var statCard = Ui.Card(Ui.V(12, stats, _spark), new Thickness(20, 16));
-        statCard.MaxWidth = 640;
+        stats.Children.Add(c1); stats.Children.Add(c2);
+        _today.FontSize = 13;
+        var todayRow = Ui.Row(Ui.H(8, Ui.Section(L.S("today")), _modeChip), null);
+        var usageLink = Ui.Btn(L.S("usage") + "  ›", Ui.Kind.Ghost, () => SatraShell.I.Go("usage"), size: 12);
+        var statCard = Ui.Card(Ui.V(12, Ui.Row(Ui.Section(L.S("usage")), usageLink), stats, _spark, Ui.V(3, todayRow, _today)), new Thickness(20, 14));
         _statCard = statCard;
-        Grid.SetRow(statCard, 5);
-        _root.Children.Add(statCard);
-        _speedHost.MaxWidth = 640;
-        Grid.SetRow(_speedHost, 5);
-        _root.Children.Add(_speedHost);
-        _speedHost.PropertyChanged += (_, e) => { if (e.Property == ContentControl.ContentProperty) { statCard.IsVisible = _density < 3 && _speedHost.Content == null; Refit(); } };
+        var right = new Panel(); right.Children.Add(statCard); right.Children.Add(_speedHost);
+        _speedHost.PropertyChanged += (_, e) => { if (e.Property == ContentControl.ContentProperty) { statCard.IsVisible = _speedHost.Content == null; Refit(); } };
+        _bottom = new Grid { ColumnDefinitions = new ColumnDefinitions("3*,16,2*") };
+        Grid.SetColumn(right, 2);
+        _bottom.Children.Add(_server); _bottom.Children.Add(right);
+        _bottom.VerticalAlignment = VerticalAlignment.Top;
+        Grid.SetRow(_bottom, 4);
+        _root.Children.Add(_bottom);
+        _root.MaxWidth = 980;
 
-        // no UI work while the window is hidden/minimized or Home is not on screen
+        // keyboard: Ctrl+Enter connects/disconnects from anywhere on Home
+        _root.AttachedToVisualTree += (_, _) =>
+        {
+            if (TopLevel.GetTopLevel(_root) is { } tl && !_keysHooked)
+            {
+                _keysHooked = true;
+                tl.AddHandler(InputElement.KeyDownEvent, (_, e) =>
+                {
+                    if (e.Key == Key.Enter && e.KeyModifiers.HasFlag(KeyModifiers.Control) && _root.IsEffectivelyVisible) { e.Handled = true; _ = SatraCore.I.ToggleAsync(); }
+                }, Avalonia.Interactivity.RoutingStrategies.Tunnel);
+            }
+        };
+
         bool Shown() => _root.IsEffectivelyVisible && _root.IsAttachedToVisualTree() && SatraShell.I.Window is { IsVisible: true, WindowState: not WindowState.Minimized };
         SatraCore.I.Speed += (_, _) => Dispatcher.UIThread.Post(() => { if (Shown()) UpdateSpeed(); });
         _root.AttachedToVisualTree += (_, _) => UpdateSpeed();
-        SatraCore.I.Ticked += () => Dispatcher.UIThread.Post(() => { if (!Shown()) return;  { var c = SatraCore.I; _timer.Text = c.Since is { } s ? (DateTime.Now - s).ToString(@"hh\:mm\:ss") : ""; } });
+        SatraCore.I.Ticked += () => Dispatcher.UIThread.Post(() => { if (!Shown()) return; PaintHeroSub(); });
         // pings only touch the numbers in place: no card rebuild, no reorder while a ping run is in flight
         PingEngine.I.Changed += () => Dispatcher.UIThread.Post(() => { UpdateHomePing(); if (Shown()) UpdatePicks(); });
+    }
+    private bool _keysHooked;
+
+    private void PaintHeroSub()
+    {
+        var c = SatraCore.I;
+        var prof = ServiceLib.Satra.ProfileModes.Normalize(SatraState.I.Profile);
+        var parts = new List<string> { L.S(ConnModes.Label(SatraState.I.Mode)) };
+        if (prof != "normal") parts.Add(ServiceLib.Satra.ProfileModes.Emoji(prof) + " " + L.S("mode_" + prof));
+        if (c.Phase == ConnPhase.On && c.Since is { } s) parts.Add(Ui.Ltr((DateTime.Now - s).ToString(@"hh\:mm\:ss")));
+        var t = string.Join("  ·  ", parts);
+        if (_heroSub.Text != t) _heroSub.Text = t;
+    }
+
+    /// Exit facts under the state: flag + exit IP (copy), Tor badge, live ping, local port.
+    private void PaintHeroMeta()
+    {
+        var c = SatraCore.I; var a = c.Active;
+        _heroMeta.Children.Clear();
+        void Add(Control x) { x.VerticalAlignment = VerticalAlignment.Center; x.Margin = new Thickness(0, 2, 8, 2); _heroMeta.Children.Add(x); }
+        if (c.Phase != ConnPhase.On || a == null) { _heroMeta.IsVisible = false; return; }
+        _heroMeta.IsVisible = true;
+        var ip = SatraState.I.Geo.TryGetValue(NetBadges.GeoKey(a), out var g) ? g.Ip : "";
+        if (ip.Length > 0)
+        {
+            var ipb = Ui.Pill("", P.Text, P.Fill, 11);
+            ipb.Child = Ui.H(6, NetBadges.FlagView(NetBadges.ExitCc(a), 14), Ui.Num(Ui.T(Ui.Ltr(ip), 11.5, FontWeight.SemiBold, P.Text)), Ui.T("⧉", 11, FontWeight.Normal, P.Text3));
+            if (ipb.Child is StackPanel sp) foreach (var k in sp.Children) k.VerticalAlignment = VerticalAlignment.Center;
+            ipb.Padding = new Thickness(9, 3); ipb.Cursor = new Cursor(StandardCursorType.Hand); ToolTip.SetTip(ipb, L.S("sc_ip") + " · " + L.S("copy"));
+            ipb.PointerReleased += (_, _) => _ = SatraShell.I.Copy(ip);
+            Add(Ui.Pressable(ipb));
+            if (TorExits.IsKnownExit(ip)) Add(TorBadge());
+        }
+        _powerPing.Width = double.NaN;
+        Add(_powerPing);
+        if (SatraState.I.Mode != ConnModes.Tun && PortChips() is Control pc) { pc.HorizontalAlignment = HorizontalAlignment.Left; pc.Margin = new Thickness(0); Add(pc); }
     }
 
     private async Task AddAsync() => await SatraCore.I.AddFromClipboardAsync(await SatraShell.I.ClipboardText());
@@ -244,8 +316,13 @@ public class HomePage : IPage
             _ => (L.S("st_off"), c.ModeAwaitingConnect ? L.S("await_connect") : L.S("d_off"), P.Text),
         };
         var psig = $"{c.Phase == ConnPhase.On}{m}{L.Lang}";
-        if (psig != _portsSig) { _portsSig = psig; _ports.Content = c.Phase == ConnPhase.On && m != ConnModes.Tun ? PortChips() : null; }
+        if (psig != _portsSig) { _portsSig = psig; _lastServerKey = ""; }
         _status.Foreground = P.B(col);
+        _heroState.Text = _status.Text;
+        _heroState.Foreground = P.B(c.Phase is ConnPhase.On or ConnPhase.Off ? P.Text : col);
+        _heroDot.Background = P.B(c.Phase == ConnPhase.Off ? P.Text3 : col);
+        _hero.BorderBrush = P.B(c.Phase == ConnPhase.On ? P.Lerp(P.Surface, col, 0.45) : P.Separator);
+        PaintHeroSub();
         _timer.Text = c.Since is { } s ? (DateTime.Now - s).ToString(@"hh\:mm\:ss") : "";
         // keep the line's space so the switch never moves when the state changes
         _timer.Opacity = c.Phase == ConnPhase.On ? 1 : 0;
@@ -271,6 +348,7 @@ public class HomePage : IPage
         {
             _lastServerKey = key;
             _server.Content = ServerCard(a);
+            PaintHeroMeta();
             Refit();
         }
         else { UpdateHomePing(); UpdatePicks(); }
@@ -309,39 +387,23 @@ public class HomePage : IPage
         return chips;
     }
 
-    /// Three clear tiles: Ports only · System proxy · Whole device. The selected one is what is active now.
+    /// How apps reach the tunnel — a segmented control (Ports only · System proxy · Whole device), its one-line meaning, and smart routing.
     private Control ModeSelector()
     {
         var st = SatraState.I;
-        var on = SatraCore.I.Phase == ConnPhase.On;
-        var grid = new UniformGrid { Rows = 1 };
         _tileDescs.Clear();
-        foreach (var (mode, glyph, sub) in new[] { (ConnModes.Ports, "⌁", "m_ports_d"), (ConnModes.SystemProxy, "◎", "m_proxy_d"), (ConnModes.Tun, "⛨", "m_tun_d") })
+        var modes = new[] { (ConnModes.Ports, "m_ports_d"), (ConnModes.SystemProxy, "m_proxy_d"), (ConnModes.Tun, "m_tun_d") };
+        var idx = Math.Max(0, Array.FindIndex(modes, x => x.Item1 == st.Mode));
+        var seg = new SlideSegmented(modes.Select(x => L.S(ConnModes.Label(x.Item1))).ToArray(), idx, i =>
         {
-            var sel = st.Mode == mode;
-            var live = sel && on;
-            var accent = live ? P.Success : P.Accent;
-            var title = Ui.T(L.S(ConnModes.Label(mode)), 13.5, FontWeight.SemiBold, sel ? P.Text : P.Text2);
-            var desc = Ui.T(L.S(sub), 11.5, FontWeight.Normal, P.Text3, TextWrapping.Wrap);
-            _tileDescs.Add(desc);
-            var dot = new Border { Width = 7, Height = 7, CornerRadius = Ui.RPill, Background = live ? P.B(P.Success) : sel ? P.B(P.Accent) : Brushes.Transparent, VerticalAlignment = VerticalAlignment.Center };
-            var tile = new Border
-            {
-                Margin = new Thickness(4, 0), Padding = new Thickness(14, 12), CornerRadius = Ui.RCtl, 
-                Background = P.B(sel ? P.Lerp(P.Surface, accent, 0.10) : P.Surface),
-                BorderBrush = P.B(sel ? P.Lerp(P.Surface, accent, 0.55) : P.Separator), BorderThickness = new Thickness(1),
-                Cursor = new Cursor(StandardCursorType.Hand),
-                Child = Ui.V(4, Ui.H(8, Ui.T(glyph, 15, FontWeight.Normal, sel ? accent : P.Text3), title, dot), desc),
-            };
-            if (tile.Child is StackPanel sp) { sp.VerticalAlignment = VerticalAlignment.Center; foreach (var c in ((StackPanel)sp.Children[0]).Children) c.VerticalAlignment = VerticalAlignment.Center; }
-            ToolTip.SetTip(tile, L.S(sub));
-            tile.Transitions = new Avalonia.Animation.Transitions { new Avalonia.Animation.BrushTransition { Property = Border.BackgroundProperty, Duration = TimeSpan.FromMilliseconds(220) } };
-            Avalonia.Automation.AutomationProperties.SetName(tile, L.S(ConnModes.Label(mode)));
-            tile.PointerReleased += (_, _) => { if (SatraCore.I.Phase is ConnPhase.Connecting or ConnPhase.Disconnecting) return; _ = SatraCore.I.SetModeAsync(mode); };
-            grid.Children.Add(Ui.Pressable(tile));
-        }
-        grid.Margin = new Thickness(-4, 0);
-        // smart routing lives with the mode: it decides which sites skip the server in every mode
+            if (SatraCore.I.Phase is ConnPhase.Connecting or ConnPhase.Disconnecting) { _modeSig = ""; Refresh(); return; }
+            _ = SatraCore.I.SetModeAsync(modes[i].Item1);
+        });
+        seg.Width = _density >= 2 ? 390 : 450; seg.HorizontalAlignment = HorizontalAlignment.Left; seg.VerticalAlignment = VerticalAlignment.Center;
+        Avalonia.Automation.AutomationProperties.SetName(seg, L.S("route_title"));
+        var desc = Ui.T(L.S(modes[idx].Item2), 12, FontWeight.Normal, P.Text3);
+        desc.TextTrimming = TextTrimming.CharacterEllipsis;
+        _tileDescs.Add(desc);
         var region = st.Routing switch { "russia" => L.S("routing_russia"), "china" => L.S("routing_china"), _ => L.S("routing_iran") };
         var sw = Ui.Switch(st.SmartRouting, v =>
         {
@@ -352,17 +414,16 @@ public class HomePage : IPage
             _routeSig = "";
             Refresh();
         });
-        var smart = new Grid { ColumnDefinitions = new ColumnDefinitions("Auto,*,Auto") };
-        var g = Ui.T("⇄", 14, FontWeight.Normal, st.SmartRouting ? P.Accent : P.Text3);
-        g.Margin = new Thickness(0, 1, 10, 0); g.VerticalAlignment = VerticalAlignment.Top;
-        var cap = Ui.Caption(st.SmartRouting ? L.S("smart_routing_d") : L.S("smart_routing_off_d"), P.Text3);
+        ToolTip.SetTip(sw, st.SmartRouting ? L.S("smart_routing_d") : L.S("smart_routing_off_d"));
+        var cap = Ui.T(st.SmartRouting ? L.S("smart_routing_d") : L.S("smart_routing_off_d"), 11.5, FontWeight.Normal, P.Text3);
+        cap.TextTrimming = TextTrimming.CharacterEllipsis; cap.MaxWidth = 300;
         _smartCaption = cap;
-        var txt = Ui.V(1, Ui.T($"{L.S("smart_routing")} · {region}", 13, FontWeight.Medium), cap);
-        sw.VerticalAlignment = VerticalAlignment.Center; sw.Margin = new Thickness(12, 0, 0, 0);
-        Grid.SetColumn(txt, 1); Grid.SetColumn(sw, 2);
-        smart.Children.Add(g); smart.Children.Add(txt); smart.Children.Add(sw);
-        smart.Margin = new Thickness(2, 10, 2, 0);
-        return Ui.Enter(Ui.V(8, Ui.Section(L.S("route_title")), grid, smart));
+        var smart = Ui.H(10, Ui.V(1, Ui.T($"{L.S("smart_routing")} · {region}", 12.5, FontWeight.Medium, P.Text2), cap), sw);
+        foreach (var k in smart.Children) k.VerticalAlignment = VerticalAlignment.Center;
+        var row = new Grid { ColumnDefinitions = new ColumnDefinitions("*,Auto") };
+        Grid.SetColumn(smart, 1); smart.Margin = new Thickness(20, 0, 0, 0);
+        row.Children.Add(seg); row.Children.Add(smart);
+        return Ui.Enter(Ui.V(8, Ui.Section(L.S("route_title")), row, desc));
     }
 
     /// One fixed row per quick pick; rebinding swaps text/flag/pill inside the same controls (no rebuild, no layout jump).
@@ -417,11 +478,11 @@ public class HomePage : IPage
         PickRebuilds++;
         var rows = new StackPanel { Spacing = 0 };
         rows.Children.Add(ActiveRow(a));
-        _pickSep = new Border { Height = 1, Background = P.B(P.Separator), Margin = new Thickness(0, 8, 0, 4) };
-        rows.Children.Add(_pickSep);
-        _slots.Clear();
-        for (var i = 0; i < 3; i++) { var s = NewSlot(); _slots.Add(s); rows.Children.Add(s.View); }
-        UpdatePicks();
+        // v1.9: the config is chosen on Servers only; Home shows the current one and a clear way there
+        _slots.Clear(); _pickSep = null;
+        var change = Ui.Btn(L.S("home_change_server"), Ui.Kind.Tinted, () => SatraShell.I.Go("servers"), "⇄", 12.5);
+        change.HorizontalAlignment = HorizontalAlignment.Left; change.Margin = new Thickness(0, 10, 0, 0);
+        rows.Children.Add(change);
         var head = Ui.Row(Ui.Section(L.S("server")), Ui.H(4,
             Ui.Btn(L.S("ping_all_short"), Ui.Kind.Ghost, () => _ = PingGuard.All(SatraCore.I.Profiles.ProfileItems.ToList()), "◎", 12),
             Ui.Btn(L.S("all_servers") + "  ›", Ui.Kind.Ghost, () => SatraShell.I.Go("servers"), size: 12)));
@@ -516,50 +577,60 @@ public class HomePage : IPage
     private static readonly (string id, string glyph)[] ModeGlyphs =
         [("normal", "◉"), ("game", "▶"), ("secure", "⛨"), ("fortress", "▣"), ("stream", "≋"), ("eco", "❀")];
 
-    /// Connection profiles (MODES-SPEC.md): one calm chip row; rebuilt only when selection/gating/language changes.
+    /// VPN modes (MODES-SPEC.md): six equal tiles in each mode's colour; '!' opens what it changes. Rebuilt only on selection/gating/language.
     private void PaintStrip()
     {
         var tun = SatraState.I.Mode == ConnModes.Tun;
         var cur = ServiceLib.Satra.ProfileModes.Normalize(SatraState.I.Profile);
-        var sig = $"{cur}{tun}{L.Lang}{_density >= 3}";
+        _modeHint.Text = L.S("mode_" + cur + "_d");
+        var sig = $"{cur}{tun}{L.Lang}";
         if (sig == _stripSig) return;
         _stripSig = sig;
-        _modesStrip.Children.Clear();
-        foreach (var (id, glyph) in ModeGlyphs)
+        _modesStrip.Children.Clear(); _modeTiles.Clear();
+        foreach (var (id, _) in ModeGlyphs)
         {
             var sel = id == cur;
             var ok = ServiceLib.Satra.ProfileModes.Available(id, tun);
             var mc = Color.Parse(ServiceLib.Satra.ProfileModes.Color(id));
             var info = new Border
             {
-                Width = 16, Height = 16, CornerRadius = Ui.RPill, Background = P.B(P.Lerp(P.Surface, mc, sel ? 0.35 : 0.18)),
-                Cursor = new Cursor(StandardCursorType.Help), VerticalAlignment = VerticalAlignment.Center,
-                Child = new TextBlock { Text = "!", FontSize = 10, FontWeight = FontWeight.Bold, Foreground = P.B(mc), HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center },
+                Width = 18, Height = 18, CornerRadius = Ui.RPill, Background = P.B(P.Lerp(P.Surface, mc, sel ? 0.30 : 0.14)),
+                Cursor = new Cursor(StandardCursorType.Help), HorizontalAlignment = HorizontalAlignment.Right, VerticalAlignment = VerticalAlignment.Top, Margin = new Thickness(0, 5, 5, 0),
+                Opacity = sel ? 1 : 0, Child = new TextBlock { Text = "!", FontSize = 10.5, FontWeight = FontWeight.Bold, Foreground = P.B(mc), HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center },
+                Transitions = new Avalonia.Animation.Transitions { new Avalonia.Animation.DoubleTransition { Property = Visual.OpacityProperty, Duration = TimeSpan.FromMilliseconds(150) } },
             };
             ToolTip.SetTip(info, L.F("mode_info", L.S("mode_" + id)));
             Avalonia.Automation.AutomationProperties.SetName(info, L.F("mode_info", L.S("mode_" + id)));
             info.PointerReleased += (_, e) => { e.Handled = true; ModeInfo(id); };
-            var chip = new Border
+            var emoji = Ui.T(ServiceLib.Satra.ProfileModes.Emoji(id), 17, FontWeight.Normal, P.Text);
+            var name = Ui.T(L.S("mode_" + id), 12.5, sel ? FontWeight.SemiBold : FontWeight.Medium, sel ? P.Text : P.Text2);
+            emoji.HorizontalAlignment = name.HorizontalAlignment = HorizontalAlignment.Center;
+            emoji.VerticalAlignment = name.VerticalAlignment = VerticalAlignment.Center;
+            name.TextTrimming = TextTrimming.CharacterEllipsis;
+            var body = new StackPanel { Spacing = 3, HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center, Children = { emoji, name } };
+            var tile = new Border
             {
-                Height = 30, Padding = new Thickness(_density >= 3 ? 8 : 10, 0, 7, 0), CornerRadius = Ui.RPill,
-                Background = P.B(sel ? P.Lerp(P.Surface, mc, 0.18) : P.Surface),
-                BorderBrush = P.B(sel ? P.Lerp(P.Surface, mc, 0.65) : P.Separator), BorderThickness = new Thickness(1),
-                Cursor = new Cursor(ok ? StandardCursorType.Hand : StandardCursorType.Arrow), Opacity = ok ? 1 : 0.42,
-                Child = Ui.H(6, Ui.T(ServiceLib.Satra.ProfileModes.Emoji(id), 12, FontWeight.Normal, sel ? mc : P.Text3), Ui.T(L.S("mode_" + id), 12.5, sel ? FontWeight.SemiBold : FontWeight.Medium, sel ? P.Text : P.Text2), info),
+                Height = 58, CornerRadius = Ui.RCtl, Child = body,
+                Background = P.B(sel ? P.Lerp(P.Surface, mc, 0.16) : P.Surface),
+                BorderBrush = P.B(sel ? P.Lerp(P.Surface, mc, 0.70) : P.Separator), BorderThickness = new Thickness(sel ? 1.5 : 1),
             };
-            if (chip.Child is StackPanel sp) foreach (var k in sp.Children) k.VerticalAlignment = VerticalAlignment.Center;
-            ToolTip.SetTip(chip, ok ? L.S("mode_" + id + "_d") : L.S("gate_tun") + " — " + L.S("mode_gate_d"));
-            Avalonia.Automation.AutomationProperties.SetName(chip, L.S("mode_" + id));
-            chip.Transitions = new Avalonia.Animation.Transitions { new Avalonia.Animation.BrushTransition { Property = Border.BackgroundProperty, Duration = TimeSpan.FromMilliseconds(220) } };
-            chip.PointerReleased += (_, e) =>
+            _modeTiles.Add(tile);
+            var cell = new Panel { Margin = new Thickness(4, 0), Cursor = new Cursor(ok ? StandardCursorType.Hand : StandardCursorType.Arrow), Opacity = ok ? 1 : 0.4, Children = { tile, info } };
+            cell.PointerEntered += (_, _) => { info.Opacity = 1; if (!sel && ok) tile.Background = P.B(P.Lerp(P.Surface, mc, 0.07)); };
+            cell.PointerExited += (_, _) => { info.Opacity = sel ? 1 : 0; if (!sel) tile.Background = P.B(P.Surface); };
+            ToolTip.SetTip(tile, ok ? L.S("mode_" + id + "_d") : L.S("gate_tun") + " — " + L.S("mode_gate_d"));
+            Avalonia.Automation.AutomationProperties.SetName(cell, L.S("mode_" + id));
+            tile.Transitions = new Avalonia.Animation.Transitions { new Avalonia.Animation.BrushTransition { Property = Border.BackgroundProperty, Duration = TimeSpan.FromMilliseconds(180) } };
+            cell.PointerReleased += (_, e) =>
             {
                 if (e.Handled) return;
                 if (!ok) { SatraCore.I.Notify(L.S("gate_tun")); return; }
                 if (id == ServiceLib.Satra.ProfileModes.Normalize(SatraState.I.Profile)) return;
                 ActivateMode(id);
             };
-            _modesStrip.Children.Add(Ui.Pressable(chip));
+            _modesStrip.Children.Add(Ui.Pressable(cell));
         }
+        ApplyDensity(_density);
     }
 
     public static string? LastActivation; // QA

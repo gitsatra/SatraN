@@ -36,9 +36,13 @@ public class PowerSwitch : Control
         PointerEntered += (_, _) => { _hover = true; Kick(); };
         PointerExited += (_, _) => { _hover = false; Kick(); };
         Focusable = true;
+        GotFocus += (_, _) => InvalidateVisual(); LostFocus += (_, _) => InvalidateVisual();
         KeyDown += (_, e) => { if (e.Key is Key.Space or Key.Enter) Clicked?.Invoke(); };
         Apply();
     }
+
+    /// <summary>Desktop toggle: no text inside the track (the page shows the state next to it).</summary>
+    public bool Compact { get => !_text.IsVisible; set { _text.IsVisible = !value; InvalidateArrange(); } }
 
     public void SetSize(double w, double h) { Width = w; Height = h; _label.FontSize = h >= 64 ? 15.5 : 14; _sub.IsVisible = h >= 60; InvalidateArrange(); }
 
@@ -73,7 +77,7 @@ public class PowerSwitch : Control
         // text sits on the free side of the thumb: right of it when off, left of it when on
         var th = s.Height - 12;
         var onSide = _phase is ConnPhase.On or ConnPhase.Connecting;
-        var tw = s.Width - th - 34;
+        var tw = Math.Max(0, s.Width - th - 34);
         _text.Arrange(onSide ? new Rect(22, 0, tw, s.Height) : new Rect(th + 18, 0, tw, s.Height));
         return s;
     }
@@ -104,6 +108,7 @@ public class PowerSwitch : Control
         using var sc = ctx.PushTransform(Matrix.CreateTranslation(-w / 2, -h / 2) * Matrix.CreateScale(_press * (_hover ? 1.01 : 1), _press * (_hover ? 1.01 : 1)) * Matrix.CreateTranslation(w / 2 + shake, h / 2));
         var track = new Rect(0, 0, w, h);
         var rr = h / 2;
+        if (IsKeyboardFocusWithin) ctx.DrawRectangle(null, new Pen(P.B(P.Info, 0.85), 2), track.Inflate(3.5), rr + 3.5, rr + 3.5);
         // soft outer glow when on
         if (_tint > 0.02 && _phase == ConnPhase.On)
             ctx.DrawRectangle(P.B(col, 0.10 * _tint), null, track.Inflate(5), rr + 5, rr + 5);
