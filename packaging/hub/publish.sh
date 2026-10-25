@@ -1,6 +1,7 @@
 #!/bin/bash
 # Publish a CI release to Satra Hub downloads (/satra/dl/) + rebuild the signed apt repo.
 # usage: publish.sh <dir-with-release-files> <version>
+# Keeps dl/android/ (published separately by the Android release) untouched.
 # env: SATRAN_GPG_KEY (fingerprint), GNUPGHOME, HUB_SSH (command prefix that runs ssh to the Hub host)
 set -euo pipefail
 SRC=$1; V=$2; HERE=$(cd "$(dirname "$0")" && pwd)
@@ -22,5 +23,5 @@ for f in sorted(os.listdir(os.path.join(m, v))):
     files[f] = {"url": f"{v}/{f}", "size": os.path.getsize(p), "sha256": hashlib.sha256(open(p, "rb").read()).hexdigest()}
 json.dump({"version": v, "date": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()), "files": files}, open(os.path.join(m, "latest.json"), "w"), indent=1)
 PY
-tar -C "$M" --warning=no-file-changed -cf - . | $HUB_SSH 'mkdir -p /var/lib/satra-hub/dl.new && tar -C /var/lib/satra-hub/dl.new -xf - && rm -rf /var/lib/satra-hub/dl.old && { [ -d /var/lib/satra-hub/dl ] && mv /var/lib/satra-hub/dl /var/lib/satra-hub/dl.old || true; } && mv /var/lib/satra-hub/dl.new /var/lib/satra-hub/dl && rm -rf /var/lib/satra-hub/dl.old && chmod -R a+rX /var/lib/satra-hub/dl'
+tar -C "$M" --warning=no-file-changed -cf - . | $HUB_SSH 'mkdir -p /var/lib/satra-hub/dl.new && tar -C /var/lib/satra-hub/dl.new -xf - && for k in android; do [ -d /var/lib/satra-hub/dl/$k ] && [ ! -e /var/lib/satra-hub/dl.new/$k ] && cp -a /var/lib/satra-hub/dl/$k /var/lib/satra-hub/dl.new/; done; rm -rf /var/lib/satra-hub/dl.old && { [ -d /var/lib/satra-hub/dl ] && mv /var/lib/satra-hub/dl /var/lib/satra-hub/dl.old || true; } && mv /var/lib/satra-hub/dl.new /var/lib/satra-hub/dl && rm -rf /var/lib/satra-hub/dl.old && chmod -R a+rX /var/lib/satra-hub/dl'
 echo "published $V"
