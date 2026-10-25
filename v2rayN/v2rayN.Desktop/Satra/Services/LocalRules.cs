@@ -5,6 +5,23 @@ namespace v2rayN.Desktop.Satra.Services;
 /// <summary>Writes block rules for exhausted local limits into the active routing (tagged "satra:"), then reloads the core.</summary>
 public static class LocalRules
 {
+    /// <summary>Domestic resolvers for traffic that goes direct (local sites must resolve to local CDNs).</summary>
+    public static string DirectDns(string? region) => region switch
+    {
+        "russia" => "77.88.8.8,77.88.8.1",
+        "china" => "223.5.5.5,119.29.29.29",
+        _ => "217.218.155.155,217.218.127.127", // Iran (TCI public resolvers)
+    };
+
+    /// <summary>Apply region DNS + persist (call after the region changes).</summary>
+    public static async Task ApplyDirectDnsAsync(string? region)
+    {
+        var cfg = AppManager.Instance.Config;
+        cfg.SimpleDNSItem ??= ConfigHandler.InitBuiltinSimpleDNS();
+        cfg.SimpleDNSItem.DirectDNS = DirectDns(region);
+        await ConfigHandler.SaveConfig(cfg);
+    }
+
     public static EPresetType Preset(string r) => r switch { "russia" => EPresetType.Russia, "china" => EPresetType.Default, _ => EPresetType.Iran };
 
     /// <summary>Direct-routed domains and IPs per region. Only geosite codes present in the stock v2fly/Chocolate4U dat files.</summary>

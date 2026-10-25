@@ -5,7 +5,7 @@ namespace v2rayN.Desktop.Satra.Services;
 /// </summary>
 public static class Hardening
 {
-    public const int Revision = 4;
+    public const int Revision = 5;
 
     /// <summary>SatraNG Android SOCKS port — desktop must match so shared docs/QR/hotspot stay consistent.</summary>
     public const int SatraSocksPort = 28888;
@@ -41,7 +41,12 @@ public static class Hardening
                 // Xray+sing-box LegacyProtect needs process_path match (CAP_SYS_PTRACE). Satra uses
                 // setcap NET_ADMIN only — force sing-box for TUN instead.
                 cfg.TunModeItem.EnableLegacyProtect = false;
-                if (string.IsNullOrEmpty(cfg.TunModeItem.Stack)) cfg.TunModeItem.Stack = "mixed";
+                // Measured in a netns (vless, loopback): mixed/9000 ≈ 1.6 GB/s vs 1500 ≈ 0.33 GB/s, gvisor ≈ 0.9 GB/s.
+                cfg.TunModeItem.Stack = "mixed";
+                if (cfg.TunModeItem.Mtu is <= 1500) cfg.TunModeItem.Mtu = 9000;
+                // Direct (local) sites: resolve with the region's domestic DNS, not v2rayN's Chinese default.
+                if (string.IsNullOrEmpty(d.DirectDNS) || d.DirectDNS.Contains("119.29.29.29") && st.Routing != "china")
+                    d.DirectDNS = LocalRules.DirectDns(st.Routing);
                 st.Mode = "tun"; // VPN (whole device) is the default — like Outline/OpenVPN
                 if (OperatingSystem.IsWindows()) EnsureHotkey(cfg);
                 await ConfigHandler.SaveConfig(cfg);

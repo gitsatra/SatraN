@@ -87,6 +87,8 @@ public class SatraState
     public Dictionary<string, DayUsage> Days { get; set; } = [];
     /// <summary>yyyy-MM-dd → ("a:app" | "d:site") → bytes.</summary>
     public Dictionary<string, Dictionary<string, long>> Usage { get; set; } = [];
+    /// <summary>Asset update metadata: "Geo"/"Rules" → version, "    public Dictionary<string, Dictionary<string, long>> Usage { get; set; } = [];lt;Kind    public Dictionary<string, Dictionary<string, long>> Usage { get; set; } = [];gt;.at" → ISO time.</summary>
+    public Dictionary<string, string> Assets { get; set; } = [];
     public List<LocalLimit> Limits { get; set; } = [];
 
     [JsonIgnore] public static SatraState I { get; private set; } = new();

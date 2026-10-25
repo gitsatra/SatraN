@@ -4,7 +4,7 @@ using System.Net.Http;
 
 // Windows installer: find or download SatraN-*-win-x64.zip, extract, run Install-SatraN.ps1 elevated.
 
-const string Version = "1.2.2";
+const string Version = "1.3.0";
 const string Repo = "liamlope/satran";
 
 static string? FindZip(string beside)
@@ -18,7 +18,7 @@ static string? FindZip(string beside)
 static async Task<string?> DownloadZipAsync(string destDir)
 {
     var name = $"SatraN-{Version}-win-x64.zip";
-    var url = $"https://github.com/{Repo}/releases/download/v{Version}/{name}";
+    var url = $"https://p.iivt.ir:2097/satra/dl/{Version}/{name}"; // releases repo is private; Satra Hub hosts the files
     var dest = Path.Combine(destDir, name);
     Console.WriteLine("Downloading " + url);
     using var http = new HttpClient { Timeout = TimeSpan.FromMinutes(15) };

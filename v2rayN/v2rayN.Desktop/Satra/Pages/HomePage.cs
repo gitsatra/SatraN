@@ -40,6 +40,7 @@ public class HomePage : IPage
             Ui.Btn(L.S("add"), Ui.Kind.Tinted, () => _ = AddAsync(), "+")));
         _root.Children.Add(head);
         _ = CheckUpdateAsync();
+        new DispatcherTimer(TimeSpan.FromHours(6), DispatcherPriority.Background, (_, _) => _ = CheckUpdateAsync()).Start();
 
         _status.HorizontalAlignment = _hint.HorizontalAlignment = _timer.HorizontalAlignment = HorizontalAlignment.Center;
         _orb.Clicked += () => _ = SatraCore.I.ToggleAsync();
@@ -118,14 +119,15 @@ public class HomePage : IPage
                     else pct.Text = Ui.Bytes(p.got);
                 });
             });
-            var (ok, path, err) = await SatraAppUpdate.DownloadAsync(u.AssetUrl, u.AssetName, prog);
+            var (ok, path, err) = await SatraAppUpdate.DownloadAsync(u.AssetUrl, u.AssetName, prog, default, u.Sha256);
             if (!ok || path == null)
             {
                 status.Text = err ?? "download failed";
                 return;
             }
-            await SatraAppUpdate.InstallAsync(path);
-            close();
+            status.Text = L.S("app_update_installing");
+            var ierr = await SatraAppUpdate.InstallAsync(path);
+            if (ierr != null) status.Text = ierr;
         });
         close = SatraShell.I.Sheet(L.S("app_update"), Ui.V(12, status, barHost, pct, install), 420);
     }

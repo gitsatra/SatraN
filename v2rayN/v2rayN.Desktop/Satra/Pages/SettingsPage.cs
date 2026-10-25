@@ -63,6 +63,7 @@ public class SettingsPage : IPage
             {
                 st.Routing = routes[i];
                 SatraState.Save();
+                _ = LocalRules.ApplyDirectDnsAsync(routes[i]);
                 if (st.SmartRouting) _ = SatraCore.I.Main.ApplyRegionalPreset(LocalRules.Preset(routes[i]));
                 SatraCore.I.Notify(L.S("routing") + " · OK");
                 Refresh();
@@ -120,6 +121,7 @@ public class SettingsPage : IPage
             Ui.ListRow(L.S("smart"), L.S("smart_desc"), Ui.Switch(st.SmartConnect, v => { st.SmartConnect = v; SatraState.Save(); }), glyph: "⚡", glyphColor: P.Accent),
             Ui.ListRow(L.S("auto_update"), "15 min", Ui.Switch(st.AutoUpdate, v => { st.AutoUpdate = v; SatraState.Save(); }), glyph: "⟳"),
             Ui.ListRow(L.S("autostart"), null, Ui.Switch(Cfg.GuiItem.AutoRun, async v => { Cfg.GuiItem.AutoRun = v; await AutoStartupHandler.UpdateTask(Cfg); await ConfigHandler.SaveConfig(Cfg); }), glyph: "⏻"),
+            Ui.ListRow(L.S("updates"), L.S("updates_d"), Ui.T("›", 18, FontWeight.Bold, P.Text3), UpdatesSheet, "↓"),
             Ui.ListRow(L.S("show_advanced"), L.S("simple_mode_hint"), Ui.Switch(st.Advanced, v => { st.Advanced = v; SatraState.Save(); Refresh(); }), glyph: "⚙")));
 
         if (st.Advanced)
@@ -140,6 +142,100 @@ public class SettingsPage : IPage
         _body.Children.Add(Ui.Section(L.S("about")));
         _body.Children.Add(Ui.Group(
             Ui.ListRow("SatraN", $"v{Identity.Version} · Xray · v2rayN {Utils.GetVersionInfo()} · {Identity.Os}", Ui.Btn("Exit", Ui.Kind.Danger, () => _ = AppManager.Instance.AppExitAsync(true), size: 13), glyph: "S", glyphColor: P.Accent)));
+    }
+
+    private void UpdatesSheet()
+    {
+        var kinds = new[] { AssetUpdates.Kind.Geo, AssetUpdates.Kind.Rules, AssetUpdates.Kind.Xray, AssetUpdates.Kind.SingBox };
+        var names = new[] { L.S("asset_geo"), L.S("asset_rules"), "Xray", "sing-box" };
+        var list = new StackPanel { Spacing = 0 };
+        var appRow = new ContentControl();
+        var busy = false;
+        Action refreshAll = () => { };
+
+        async Task<Control> RowAsync(int i, bool online)
+        {
+            var info = await AssetUpdates.InfoAsync(kinds[i], online);
+            var status = Ui.Caption(Line(info, online), P.Text3);
+            var bar = new ProgressBar { Minimum = 0, Maximum = 100, Height = 4, IsVisible = false };
+            var btns = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 6 };
+            async Task Do(Func<Task<string?>> act, string doing)
+            {
+                if (busy) return;
+                busy = true;
+                status.Text = doing; status.Foreground = P.B(P.Accent); bar.IsVisible = true; bar.IsIndeterminate = true;
+                var err = await act();
+                busy = false;
+                bar.IsVisible = false;
+                SatraCore.I.Notify(err == null ? names[i] + " · " + L.S("done") : names[i] + " · " + err);
+                refreshAll();
+            }
+            var prog = new Progress<(long got, long? total)>(p => Dispatcher.UIThread.Post(() =>
+            {
+                if (p.total is > 0) { bar.IsIndeterminate = false; bar.Value = 100.0 * p.got / p.total.Value; }
+            }));
+            if (!online || AssetUpdates.IsNewer(info))
+                btns.Children.Add(Ui.Btn(online ? L.S("update") : L.S("check"), online ? Ui.Kind.Primary : Ui.Kind.Tinted,
+                    () => _ = online ? Do(() => AssetUpdates.UpdateAsync(kinds[i], prog), L.S("updating")) : Task.Run(() => Dispatcher.UIThread.Post(() => refreshAll())), null, 12));
+            if (info.CanRollback)
+                btns.Children.Add(Ui.Btn(L.S("rollback"), Ui.Kind.Ghost, () => _ = Do(() => AssetUpdates.RollbackAsync(kinds[i]), L.S("rolling_back")), "↶", 12));
+            return new Border { Padding = new Thickness(14, 10), Child = Ui.V(6, Ui.Row(Ui.V(2, Ui.T(names[i], 14, FontWeight.SemiBold), status), btns), bar) };
+        }
+
+        static string Line(AssetUpdates.Info info, bool online)
+        {
+            var cur = info.Current + (info.UpdatedAt is { } at ? " · " + at.ToString("yyyy-MM-dd HH:mm") : "");
+            if (!online) return cur;
+            if (info.Latest == null) return cur + " · " + L.S("asset_err_check");
+            return AssetUpdates.IsNewer(info) ? cur + " → " + info.Latest : cur + " · " + L.S("up_to_date");
+        }
+
+        async Task FillAsync(bool online)
+        {
+            var appT = SatraAppUpdate.CheckAsync();
+            var rows = await Task.WhenAll(Enumerable.Range(0, kinds.Length).Select(i => Dispatcher.UIThread.InvokeAsync(() => RowAsync(i, online))));
+            var app = await appT;
+            Dispatcher.UIThread.Post(() =>
+            {
+                list.Children.Clear();
+                var first = true;
+                foreach (var r in rows)
+                {
+                    if (!first) list.Children.Add(new Border { Height = 1, Background = P.B(P.Separator), Margin = new Thickness(14, 0, 0, 0) });
+                    first = false;
+                    list.Children.Add(r);
+                }
+                appRow.Content = Ui.Row(Ui.V(2, Ui.T("SatraN", 14, FontWeight.SemiBold),
+                        Ui.Caption("v" + Identity.Version + " · " + (app.HasUpdate ? "→ " + app.Version : app.Version != null ? L.S("up_to_date") : L.S("asset_err_check"))
+                                   + (SatraAppUpdate.IsDebInstall ? " · apt" : ""), P.Text3)),
+                    app.HasUpdate ? Ui.Btn(L.S("update"), Ui.Kind.Primary, () => SatraShell.I.Go("home"), null, 12) : new Control());
+            });
+        }
+
+        refreshAll = () => _ = FillAsync(true);
+        list.Children.Add(new Border { Padding = new Thickness(16, 14), Child = Ui.Caption(L.S("checking"), P.Text3) });
+        _ = FillAsync(true);
+        var updAll = Ui.Btn(L.S("update_all"), Ui.Kind.Tinted, async () =>
+        {
+            if (busy) return;
+            busy = true;
+            var errs = new List<string>();
+            foreach (var k in kinds)
+            {
+                var info = await AssetUpdates.InfoAsync(k, true);
+                if (!AssetUpdates.IsNewer(info)) continue;
+                SatraCore.I.Notify(L.S("updating") + " " + names[Array.IndexOf(kinds, k)]);
+                if (await AssetUpdates.UpdateAsync(k, null) is { } e) errs.Add(names[Array.IndexOf(kinds, k)] + ": " + e);
+            }
+            busy = false;
+            SatraCore.I.Notify(errs.Count == 0 ? L.S("update_all") + " · " + L.S("done") : string.Join(" · ", errs));
+            refreshAll();
+        }, "⟳", 13);
+        SatraShell.I.Sheet(L.S("updates"), Ui.V(12,
+            Ui.Card(appRow, new Thickness(14, 10)),
+            Ui.Row(Ui.Section(L.S("asset_section")), updAll),
+            new Border { Background = P.B(P.Surface), CornerRadius = Ui.RCard, ClipToBounds = true, Child = list },
+            Ui.Caption(L.S("updates_hint"), P.Text3)), 520);
     }
 
     private void ExceptionsSheet()

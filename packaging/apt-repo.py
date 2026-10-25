@@ -73,6 +73,14 @@ open(os.path.join(binary, "Packages"), "w").write(packages)
 with gzip.open(os.path.join(binary, "Packages.gz"), "wb") as gz:
     gz.write(packages.encode())
 
+def hashes(algo):
+    out_lines = []
+    for rel in ("main/binary-amd64/Packages", "main/binary-amd64/Packages.gz"):
+        data = open(os.path.join(out, "dists/stable", rel), "rb").read()
+        out_lines.append(f" {hashlib.new(algo, data).hexdigest()} {len(data)} {rel}")
+    return "\n".join(out_lines)
+
+
 release = f"""Origin: SatraN
 Label: SatraN
 Suite: stable
@@ -80,6 +88,26 @@ Codename: stable
 Architectures: amd64
 Components: main
 Date: {time.strftime('%a, %d %b %Y %H:%M:%S +0000', time.gmtime())}
+MD5Sum:
+{hashes("md5")}
+SHA256:
+{hashes("sha256")}
 """
-open(os.path.join(out, "dists/stable/Release"), "w").write(release)
-print("apt repo ready at", out, "with", len(debs), "package(s)")
+rel_path = os.path.join(out, "dists/stable/Release")
+open(rel_path, "w").write(release)
+# Sign when a key is available: SATRAN_GPG_KEY=<fingerprint> (GNUPGHOME selects the keyring)
+key = os.environ.get("SATRAN_GPG_KEY")
+if key:
+    import subprocess
+
+    d = os.path.join(out, "dists/stable")
+    for f in ("InRelease", "Release.gpg"):
+        try:
+            os.remove(os.path.join(d, f))
+        except FileNotFoundError:
+            pass
+    g = ["gpg", "--batch", "--yes", "--pinentry-mode", "loopback", "--passphrase", "", "-u", key]
+    subprocess.check_call(g + ["--clearsign", "-o", os.path.join(d, "InRelease"), rel_path])
+    subprocess.check_call(g + ["-abs", "-o", os.path.join(d, "Release.gpg"), rel_path])
+    subprocess.check_call(["gpg", "--batch", "--yes", "--export", "-o", os.path.join(out, "satran.gpg"), key])
+print("apt repo ready at", out, "with", len(debs), "package(s)", "(signed)" if key else "(unsigned)")

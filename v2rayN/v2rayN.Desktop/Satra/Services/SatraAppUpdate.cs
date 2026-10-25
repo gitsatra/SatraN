@@ -1,70 +1,34 @@
 using System.Diagnostics;
-using System.Net.Http.Headers;
 using System.Text.Json;
 using System.Text.RegularExpressions;
 
 namespace v2rayN.Desktop.Satra.Services;
 
 /// <summary>
-/// Checks GitHub releases for SatraN (liamlope/satran) and downloads/installs the matching artifact.
+/// App self-update from Satra Hub (<c>/satra/dl/latest.json</c>): pick the right artifact for this OS,
+/// download with SHA-256 check, install, restart. Linux .deb installs go through pkexec+apt (same package
+/// that `apt upgrade` delivers); portable Linux builds are replaced in place; Windows runs the Setup.
 /// </summary>
 public static class SatraAppUpdate
 {
-    private const string Repo = "liamlope/satran";
-    private static readonly HttpClient Http = new() { Timeout = TimeSpan.FromMinutes(10) };
+    public record CheckResult(bool HasUpdate, string? LatestTag, string? Version, string? AssetUrl, string? AssetName, string? Sha256 = null);
 
-    public record CheckResult(bool HasUpdate, string? LatestTag, string? Version, string? AssetUrl, string? AssetName);
-
-    static SatraAppUpdate()
-    {
-        Http.DefaultRequestHeaders.UserAgent.ParseAdd(Identity.App);
-        Http.DefaultRequestHeaders.Accept.Add(new MediaTypeWithQualityHeaderValue("application/vnd.github+json"));
-    }
+    public static bool IsDebInstall => OperatingSystem.IsLinux() && AppContext.BaseDirectory.StartsWith("/opt/satran", StringComparison.Ordinal);
 
     public static async Task<CheckResult> CheckAsync(CancellationToken ct = default)
     {
         try
         {
-            using var resp = await Http.GetAsync($"https://api.github.com/repos/{Repo}/releases/latest", ct);
-            if (!resp.IsSuccessStatusCode) return new(false, null, null, null, null);
-            await using var stream = await resp.Content.ReadAsStreamAsync(ct);
-            using var doc = await JsonDocument.ParseAsync(stream, cancellationToken: ct);
+            using var doc = JsonDocument.Parse(await UpdNet.GetStringAsync(UpdNet.HubDl + "latest.json", ct));
             var root = doc.RootElement;
-            var tag = root.GetProperty("tag_name").GetString()?.TrimStart('v') ?? "";
-            if (!IsNewer(tag, Identity.Version)) return new(false, tag, tag, null, null);
-
-            string? url = null, name = null;
-            if (root.TryGetProperty("assets", out var assets))
-            {
-                foreach (var a in assets.EnumerateArray())
-                {
-                    var n = a.GetProperty("name").GetString() ?? "";
-                    var u = a.GetProperty("browser_download_url").GetString();
-                    if (u.IsNullOrEmpty()) continue;
-                    if (OperatingSystem.IsWindows() &&
-                        (n.Contains("Setup", StringComparison.OrdinalIgnoreCase) ||
-                         (n.Contains("win-x64", StringComparison.OrdinalIgnoreCase) && n.EndsWith(".zip", StringComparison.OrdinalIgnoreCase))))
-                    {
-                        // Prefer Setup.exe when present
-                        if (n.EndsWith(".exe", StringComparison.OrdinalIgnoreCase) || url == null)
-                        {
-                            url = u; name = n;
-                            if (n.EndsWith(".exe", StringComparison.OrdinalIgnoreCase)) break;
-                        }
-                    }
-                    else if (OperatingSystem.IsLinux() &&
-                             (n.EndsWith("_amd64.deb", StringComparison.OrdinalIgnoreCase) ||
-                              n.Contains("linux-x64", StringComparison.OrdinalIgnoreCase)))
-                    {
-                        if (n.EndsWith(".deb", StringComparison.OrdinalIgnoreCase) || url == null)
-                        {
-                            url = u; name = n;
-                            if (n.EndsWith(".deb", StringComparison.OrdinalIgnoreCase)) break;
-                        }
-                    }
-                }
-            }
-            return new(url != null, tag, tag, url, name);
+            var ver = root.GetProperty("version").GetString() ?? "";
+            if (!IsNewer(ver, Identity.Version)) return new(false, ver, ver, null, null);
+            string? want = null;
+            if (OperatingSystem.IsWindows()) want = $"SatraN-Setup-{ver}.exe";
+            else if (OperatingSystem.IsLinux()) want = IsDebInstall ? $"satran_{ver}_amd64.deb" : $"SatraN-{ver}-linux-x64.tar.gz";
+            else if (OperatingSystem.IsMacOS()) want = $"SatraN-{ver}-osx-{(System.Runtime.InteropServices.RuntimeInformation.OSArchitecture == System.Runtime.InteropServices.Architecture.Arm64 ? "arm64" : "x64")}.app.zip";
+            if (want == null || !root.GetProperty("files").TryGetProperty(want, out var f)) return new(false, ver, ver, null, null);
+            return new(true, ver, ver, UpdNet.HubDl + f.GetProperty("url").GetString(), want, f.GetProperty("sha256").GetString());
         }
         catch (Exception ex)
         {
@@ -73,31 +37,15 @@ public static class SatraAppUpdate
         }
     }
 
-    public static async Task<(bool ok, string? path, string? error)> DownloadAsync(
-        string url,
-        string fileName,
-        IProgress<(long got, long? total)>? progress,
-        CancellationToken ct = default)
+    public static async Task<(bool ok, string? path, string? error)> DownloadAsync(string url, string fileName,
+        IProgress<(long got, long? total)>? progress, CancellationToken ct = default, string? sha256 = null)
     {
         try
         {
             var dir = Path.Combine(Path.GetTempPath(), "SatraN-update");
             Directory.CreateDirectory(dir);
             var dest = Path.Combine(dir, fileName);
-            using var resp = await Http.GetAsync(url, HttpCompletionOption.ResponseHeadersRead, ct);
-            resp.EnsureSuccessStatusCode();
-            var total = resp.Content.Headers.ContentLength;
-            await using var input = await resp.Content.ReadAsStreamAsync(ct);
-            await using var output = File.Create(dest);
-            var buf = new byte[81920];
-            long got = 0;
-            int n;
-            while ((n = await input.ReadAsync(buf, ct)) > 0)
-            {
-                await output.WriteAsync(buf.AsMemory(0, n), ct);
-                got += n;
-                progress?.Report((got, total));
-            }
+            await UpdNet.DownloadAsync(url, dest, sha256, progress, ct);
             return (true, dest, null);
         }
         catch (Exception ex)
@@ -107,47 +55,74 @@ public static class SatraAppUpdate
         }
     }
 
-    public static async Task InstallAsync(string path)
+    /// <summary>Installs and restarts. Returns an error message, or null when the app is about to restart.</summary>
+    public static async Task<string?> InstallAsync(string path)
     {
-        if (OperatingSystem.IsWindows())
+        try
         {
-            if (path.EndsWith(".exe", StringComparison.OrdinalIgnoreCase))
+            if (OperatingSystem.IsWindows())
             {
+                // Setup closes/replaces the app and starts the new one; quit so files aren't locked.
                 Process.Start(new ProcessStartInfo(path) { UseShellExecute = true, Verb = "runas" });
+                await Quit();
+                return null;
             }
-            else if (path.EndsWith(".zip", StringComparison.OrdinalIgnoreCase))
+            if (OperatingSystem.IsLinux() && path.EndsWith(".deb", StringComparison.OrdinalIgnoreCase))
             {
-                // Extract next to a temp folder and run Setup.cmd / Install script if present
-                var dest = Path.Combine(Path.GetTempPath(), "SatraN-update-extract");
-                if (Directory.Exists(dest)) Directory.Delete(dest, true);
-                System.IO.Compression.ZipFile.ExtractToDirectory(path, dest);
-                var setup = Directory.GetFiles(dest, "SatraN-Setup.cmd", SearchOption.AllDirectories).FirstOrDefault()
-                    ?? Directory.GetFiles(dest, "Install-SatraN.ps1", SearchOption.AllDirectories).FirstOrDefault();
-                if (setup != null)
+                var psi = new ProcessStartInfo("pkexec", ["apt-get", "install", "-y", "--allow-downgrades", path])
+                { UseShellExecute = false, RedirectStandardError = true, RedirectStandardOutput = true };
+                using var p = Process.Start(psi)!;
+                var err = p.StandardError.ReadToEndAsync();
+                await p.StandardOutput.ReadToEndAsync();
+                await p.WaitForExitAsync();
+                if (p.ExitCode != 0)
                 {
-                    if (setup.EndsWith(".ps1", StringComparison.OrdinalIgnoreCase))
-                        Process.Start(new ProcessStartInfo("powershell.exe", $"-NoProfile -ExecutionPolicy Bypass -File \"{setup}\"") { UseShellExecute = true, Verb = "runas" });
-                    else
-                        Process.Start(new ProcessStartInfo(setup) { UseShellExecute = true, Verb = "runas" });
+                    var e = (await err).Trim();
+                    return p.ExitCode is 126 or 127 ? "cancelled" : (e.Length > 0 ? e.Split('\n')[^1] : "apt exit " + p.ExitCode);
                 }
+                Relaunch("/opt/satran/SatraN");
+                await Quit();
+                return null;
             }
-            return;
-        }
-
-        if (OperatingSystem.IsLinux() && path.EndsWith(".deb", StringComparison.OrdinalIgnoreCase))
-        {
-            var psi = new ProcessStartInfo("pkexec", $"apt-get install -y \"{path}\"")
+            if (OperatingSystem.IsLinux() && path.EndsWith(".tar.gz", StringComparison.OrdinalIgnoreCase))
             {
-                UseShellExecute = false,
-                RedirectStandardOutput = true,
-                RedirectStandardError = true,
-            };
-            using var p = Process.Start(psi);
-            if (p != null) await p.WaitForExitAsync();
+                var baseDir = AppContext.BaseDirectory.TrimEnd('/');
+                var stage = baseDir + ".new";
+                if (Directory.Exists(stage)) Directory.Delete(stage, true);
+                Directory.CreateDirectory(stage);
+                var tar = Process.Start("tar", ["-xzf", path, "-C", stage, "--strip-components=1"])!;
+                await tar.WaitForExitAsync();
+                if (tar.ExitCode != 0 || !File.Exists(Path.Combine(stage, "SatraN"))) return "extract failed";
+                // swap after we exit: a tiny shell script waits for our pid
+                var sh = $"while kill -0 {Environment.ProcessId} 2>/dev/null; do sleep 0.3; done; rm -rf '{baseDir}.old'; mv '{baseDir}' '{baseDir}.old' && mv '{stage}' '{baseDir}' && rm -rf '{baseDir}.old'; setsid '{baseDir}/SatraN' >/dev/null 2>&1 &";
+                Process.Start(new ProcessStartInfo("sh", ["-c", sh]) { UseShellExecute = false });
+                await Quit();
+                return null;
+            }
+            Process.Start(new ProcessStartInfo(path) { UseShellExecute = true });
+            return null;
+        }
+        catch (Exception ex)
+        {
+            Logging.SaveLog("SatraAppUpdate", ex);
+            return ex.Message;
         }
     }
 
-    private static bool IsNewer(string remote, string local)
+    private static void Relaunch(string exe)
+    {
+        var sh = $"while kill -0 {Environment.ProcessId} 2>/dev/null; do sleep 0.3; done; setsid '{exe}' >/dev/null 2>&1 &";
+        Process.Start(new ProcessStartInfo("sh", ["-c", sh]) { UseShellExecute = false });
+    }
+
+    private static async Task Quit()
+    {
+        SatraState.Save();
+        await AppManager.Instance.AppExitAsync(false);
+        Environment.Exit(0);
+    }
+
+    public static bool IsNewer(string remote, string local)
     {
         static int[] Parts(string v) =>
             Regex.Matches(v, @"\d+").Select(m => int.Parse(m.Value)).DefaultIfEmpty(0).ToArray();

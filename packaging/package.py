@@ -165,12 +165,14 @@ elif rid.startswith("linux"):
     # sing-box TUN configures DNS via systemd-resolved (3 polkit actions). Allow without password.
     os.makedirs(os.path.join(root, "usr/share/polkit-1/rules.d"), exist_ok=True)
     shutil.copy2(resolved_rules, os.path.join(root, "usr/share/polkit-1/rules.d/com.satran.resolved.rules"))
-    # apt source so `apt upgrade satran` can work after the first install
+    # Signed apt repo on Satra Hub so `sudo apt update && sudo apt upgrade` updates SatraN
+    os.makedirs(os.path.join(root, "usr/share/keyrings"), exist_ok=True)
+    shutil.copy2(os.path.join(os.path.dirname(__file__), "satran-archive.gpg"), os.path.join(root, "usr/share/keyrings/satran-archive.gpg"))
     os.makedirs(os.path.join(root, "etc/apt/sources.list.d"), exist_ok=True)
     with open(os.path.join(root, "etc/apt/sources.list.d/satran.list"), "w") as f:
         f.write(
-            "# SatraN — GitHub Releases apt mirror (see packaging/apt-repo.py)\n"
-            "deb [trusted=yes] https://liamlope.github.io/satran/apt stable main\n"
+            "# SatraN updates (signed). Remove this file to stop apt updates for SatraN.\n"
+            "deb [arch=amd64 signed-by=/usr/share/keyrings/satran-archive.gpg] https://p.iivt.ir:2097/satra/dl/apt stable main\n"
         )
     os.makedirs(os.path.join(root, "DEBIAN"))
     with open(os.path.join(root, "DEBIAN/postinst"), "w") as f:
