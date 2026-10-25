@@ -53,7 +53,7 @@ public class SecurityPage : IPage
         // "Connect first" gate: the scan only makes sense through the VPN
         var go = Ui.Btn(L.S("sc_connect"), Ui.Kind.Primary, async () =>
         {
-            await SatraCore.I.ConnectAsync();
+            await SatraCore.I.ConnectAsync(pick: false);
             if (SatraCore.I.Phase == ConnPhase.On) await RunAsync();
             else Gate();
         }, "⏻", 14);

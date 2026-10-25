@@ -70,7 +70,9 @@ public class SatraState
     public bool Advanced { get; set; }
     public bool SmartConnect { get; set; } = true;
     /// <summary>proxy = system proxy, tun = whole computer, socks = proxy only (apps connect to the local port).</summary>
-    public string Mode { get; set; } = "tun";
+    public string Mode { get; set; } = ServiceLib.Satra.ConnModes.Default;
+    /// <summary>Start the core on the selected config when the app opens (ports ready without pressing Connect).</summary>
+    public bool AutoStart { get; set; } = true;
     public bool SmartRouting { get; set; } = true;
     public bool KillSwitch { get; set; }
     public List<string> ViaVpn { get; set; } = [];

@@ -37,3 +37,4 @@ global using ServiceLib.Models.Dto;
 global using ServiceLib.Models.Entities;
 global using ServiceLib.Resx;
 global using ServiceLib.ViewModels;
+global using ServiceLib.Satra;

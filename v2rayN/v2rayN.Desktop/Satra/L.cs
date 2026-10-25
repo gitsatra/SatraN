@@ -1,7 +1,7 @@
 namespace v2rayN.Desktop.Satra;
 
 /// <summary>SatraN UI strings: English, فارسی, Русский. Missing keys fall back to English.</summary>
-public static class L
+public static partial class L
 {
     public static string Lang => AppManager.Instance.Config.UiItem.CurrentLanguage ?? "en";
     public static bool Rtl => Lang == "fa";
@@ -9,6 +9,7 @@ public static class L
 
     public static string S(string key)
     {
+        if (X.TryGetValue(key, out var x)) return Lang == "fa" ? x.fa : Lang == "ru" ? x.ru : x.en;
         if (Lang == "fa" && Fa.TryGetValue(key, out var f)) return f;
         if (Lang == "ru" && Ru.TryGetValue(key, out var r)) return r;
         return En.TryGetValue(key, out var e) ? e : key;

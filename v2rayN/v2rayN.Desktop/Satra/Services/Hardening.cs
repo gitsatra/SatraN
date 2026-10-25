@@ -47,7 +47,7 @@ public static class Hardening
                 // Direct (local) sites: resolve with the region's domestic DNS, not v2rayN's Chinese default.
                 if (string.IsNullOrEmpty(d.DirectDNS) || d.DirectDNS.Contains("119.29.29.29") && st.Routing != "china")
                     d.DirectDNS = LocalRules.DirectDns(st.Routing);
-                st.Mode = "tun"; // VPN (whole device) is the default — like Outline/OpenVPN
+                st.Mode = ServiceLib.Satra.ConnModes.Default; // v1.8: Ports only is the default, like v2rayN
                 if (OperatingSystem.IsWindows()) EnsureHotkey(cfg);
                 await ConfigHandler.SaveConfig(cfg);
                 st.Hardened = Revision;
@@ -57,7 +57,7 @@ public static class Hardening
             catch (Exception ex) { Logging.SaveLog("satra hardening", ex); }
         }
         // Keep Mode defaulted to tun if somehow empty
-        if (string.IsNullOrEmpty(st.Mode)) { st.Mode = "tun"; SatraState.Save(); }
+        if (!ServiceLib.Satra.ConnModes.IsValid(st.Mode)) { st.Mode = ServiceLib.Satra.ConnModes.Default; SatraState.Save(); }
         // Always enforce the dual-core TUN chain (Linux: xray bound to the physical NIC; Windows: process_path bypass).
         if (!cfg.TunModeItem.EnableLegacyProtect)
         {

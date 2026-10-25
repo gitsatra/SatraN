@@ -35,6 +35,9 @@ public class SatraCore : ReactiveObject
         I = this;
         Main = main;
         Phase = ConnPhase.Off; // startup always clean (Program.cs cleared proxy/TUN)
+        // v1.8: every launch starts in "Ports only" (like v2rayN): the core runs on the selected config and
+        // 127.0.0.1 ports just work; system proxy / TUN are explicit, separate choices on Home.
+        SatraState.I.Mode = ConnModes.Default;
         if (Phase == ConnPhase.On) Since = DateTime.Now;
         AppEvents.DispatcherStatisticsRequested.AsObservable().ObserveOn(RxSchedulers.MainThreadScheduler).Subscribe(OnStats);
         // Ping/speed rows update themselves via SpeedTestUpdated; do not RaiseChanged (that rebuilds pages).
@@ -53,15 +56,49 @@ public class SatraCore : ReactiveObject
             pc.CollectionChanged += (_, _) => Avalonia.Threading.Dispatcher.UIThread.Post(() =>
             {
                 var id = Active?.IndexId;
+                if (id != null && !_autoStarted) { _autoStarted = true; _ = AutoStartAsync(); }
                 if (id == lastActive) return;
                 lastActive = id;
                 Changed?.Invoke();
             });
         }
         DispatcherTimer.RunOnce(() => _ = AutoUpdateSubsAsync(true), TimeSpan.FromSeconds(4));
+        // list may already be loaded (no CollectionChanged): start once the UI is up
+        DispatcherTimer.RunOnce(() => { if (!_autoStarted && Active != null) { _autoStarted = true; _ = AutoStartAsync(); } }, TimeSpan.FromSeconds(1.5));
 #if SATRA_TESTCTL
         TestCtl.Install(this);
 #endif
+    }
+
+    private bool _autoStarted;
+    /// <summary>App open: start the core on the selected config in Ports-only mode, no Connect press needed.</summary>
+    private async Task AutoStartAsync()
+    {
+        if (!SatraState.I.AutoStart || Phase != ConnPhase.Off) return;
+        Logging.SaveLog("satra: auto-start (ports only)");
+        await ConnectAsync(pick: false);
+    }
+
+    /// <summary>Switch how traffic reaches the core (ports / system proxy / TUN). Off -> turns on in that mode.</summary>
+    public async Task SetModeAsync(string mode)
+    {
+        if (!ConnModes.IsValid(mode)) return;
+        var was = SatraState.I.Mode;
+        SatraState.I.Mode = mode;
+        SatraState.Save();
+        if (Phase is ConnPhase.Connecting or ConnPhase.Disconnecting) { await DisconnectAsync(); await ConnectAsync(pick: false); return; }
+        if (Phase == ConnPhase.On && was == mode) return;
+        if (Phase == ConnPhase.On && ConnModes.CanSwitchLive(was, mode))
+        {
+            // ports <-> system proxy: the core keeps running, only the OS proxy setting flips
+            Status.SystemProxySelected = (int)(mode == ConnModes.SystemProxy ? ESysProxyType.ForcedChange : ESysProxyType.ForcedClear);
+            _socksOn = true;
+            Logging.SaveLog($"Satra mode {was} -> {mode} (live)");
+            Changed?.Invoke();
+            return;
+        }
+        if (Phase == ConnPhase.On) await DisconnectAsync();
+        await ConnectAsync(pick: false);
     }
 
     public bool IsRouted => Cfg.SystemProxyItem.SysProxyType == ESysProxyType.ForcedChange || Cfg.TunModeItem.EnableTun || (SatraState.I.Mode == "socks" && _socksOn);
@@ -164,14 +201,17 @@ public class SatraCore : ReactiveObject
         finally { _watching = false; }
     }
 
+    private bool _userOff;
     public async Task ToggleAsync()
     {
         if (Phase is ConnPhase.Connecting or ConnPhase.Disconnecting) return;
-        if (Phase == ConnPhase.On) await DisconnectAsync();
-        else await ConnectAsync();
+        if (Phase == ConnPhase.On) { _userOff = true; await DisconnectAsync(); }
+        else { _userOff = false; await ConnectAsync(); }
     }
 
-    public async Task ConnectAsync()
+    public Task ConnectAsync() => ConnectAsync(true);
+
+    public async Task ConnectAsync(bool pick)
     {
         if (Active == null && Profiles.ProfileItems.Count == 0)
         {
@@ -182,7 +222,7 @@ public class SatraCore : ReactiveObject
         Set(ConnPhase.Connecting);
         try
         {
-            if (SatraState.I.SmartConnect && Profiles.ProfileItems.Count > 1)
+            if (pick && SatraState.I.SmartConnect && Profiles.ProfileItems.Count > 1)
             {
                 await SmartPickAsync(quiet: true);
                 if (gen != _connGen) return; // Off pressed while picking
@@ -212,6 +252,7 @@ public class SatraCore : ReactiveObject
                     if (Cfg.TunModeItem.EnableTun) await Status.ApplyTunModeAsync(false);
                     _socksOn = true;
                     Status.SystemProxySelected = (int)ESysProxyType.ForcedClear;
+                    if (!CoreManager.Instance.CoreRunning) await Main.Reload(); // nothing else triggers a core start here
                     break;
                 default:
                     if (Cfg.TunModeItem.EnableTun) await Status.ApplyTunModeAsync(false);
@@ -253,6 +294,17 @@ public class SatraCore : ReactiveObject
                     catch (OperationCanceledException) { /* exit IP optional */ }
                 }
             }
+            else if (SatraState.I.Mode == ConnModes.Ports)
+            {
+                // Ports only: the ports are open as soon as the core runs. A slow/blocked test URL must not
+                // tear down a working proxy (that was "never connects / errors" in 1.7.x); report it instead.
+                ok = engaged;
+                if (ok) _ = Task.Run(async () =>
+                {
+                    var t = await Status.TestServerAvailability();
+                    if (t is not { Time: > 0 } && IsCurrentConnect(gen)) Avalonia.Threading.Dispatcher.UIThread.Post(() => { ServerSilent = true; Toast?.Invoke(L.S("srv_no_answer")); Changed?.Invoke(); });
+                });
+            }
             else
             {
                 r = engaged ? await Status.TestServerAvailability() : null;
@@ -261,6 +313,7 @@ public class SatraCore : ReactiveObject
             if (gen != _connGen) return; // cancelled during the availability test: DisconnectAsync owns cleanup
             if (ok)
             {
+                ServerSilent = false;
                 SessionUp = SessionDown = 0;
                 Since = DateTime.Now;
                 Set(ConnPhase.On);
@@ -272,6 +325,18 @@ public class SatraCore : ReactiveObject
                 if (Cfg.TunModeItem.EnableTun) await Status.ApplyTunModeAsync(false);
                 _socksOn = false;
                 await CoreManager.Instance.CoreStop();
+                LastError = await DiagnoseAsync();
+                if (SatraState.I.Mode != ConnModes.Ports && gen == _connGen)
+                {
+                    // System proxy / TUN could not be engaged: fall back to Ports only so the user is never left with nothing
+                    var failed = SatraState.I.Mode;
+                    SatraState.I.Mode = ConnModes.Ports;
+                    Toast?.Invoke(L.F("mode_fell_back", L.S(ConnModes.Label(failed))));
+                    Set(ConnPhase.Off);
+                    await ConnectAsync(pick: false);
+                    return;
+                }
+                if (LastError != null) Toast?.Invoke(LastError);
                 Set(ConnPhase.Failed);
             }
         }
@@ -280,6 +345,33 @@ public class SatraCore : ReactiveObject
             Logging.SaveLog("satra connect", ex);
             Set(ConnPhase.Failed);
         }
+    }
+
+    /// <summary>True when the core runs but the server did not answer the reachability test.</summary>
+    public bool ServerSilent { get; private set; }
+    /// <summary>Human reason of the last failure (core refused the config, port busy…), null if unknown.</summary>
+    public string? LastError { get; private set; }
+
+    /// <summary>Ask the core why it refused to start (xray -test), so a failure is never silent.</summary>
+    private static async Task<string?> DiagnoseAsync()
+    {
+        try
+        {
+            var cfg = Utils.GetBinConfigPath(Global.CoreConfigFileName);
+            var exe = CoreInfoManager.Instance.GetCoreExecFile(CoreInfoManager.Instance.GetCoreInfo(ECoreType.Xray), out _);
+            if (!File.Exists(cfg) || string.IsNullOrEmpty(exe) || !File.Exists(exe)) return null;
+            if (!File.ReadAllText(cfg).Contains("\"protocol\"")) return null; // sing-box config: xray -test does not apply
+            var psi = new System.Diagnostics.ProcessStartInfo(exe, ["run", "-test", "-c", cfg]) { UseShellExecute = false, RedirectStandardOutput = true, RedirectStandardError = true, CreateNoWindow = true };
+            psi.Environment[Global.XrayLocalAsset] = Utils.GetBinPath("");
+            using var p = System.Diagnostics.Process.Start(psi)!;
+            var o = await p.StandardOutput.ReadToEndAsync() + await p.StandardError.ReadToEndAsync();
+            await p.WaitForExitAsync().WaitAsync(TimeSpan.FromSeconds(8));
+            if (p.ExitCode == 0) return null;
+            var line = o.Split('\n').LastOrDefault(l => l.Contains("Failed", StringComparison.OrdinalIgnoreCase)) ?? "";
+            Logging.SaveLog("satra diagnose: " + line);
+            return L.S("core_refused") + (line.Length > 0 ? " · " + line[(line.LastIndexOf('>') + 1)..].Trim() : "");
+        }
+        catch (Exception ex) { Logging.SaveLog("satra diagnose", ex); return null; }
     }
 
     private async Task RefreshActiveExitAsync()
@@ -354,6 +446,9 @@ public class SatraCore : ReactiveObject
     {
         await Profiles.SetDefaultServer(p.IndexId);
         Changed?.Invoke();
+        // running (any mode): the core reloads on the new config; refresh the exit IP shown on Home
+        if (Phase == ConnPhase.On) _ = Task.Run(async () => { await Task.Delay(1500); await RefreshActiveExitAsync(); });
+        else if (Phase is ConnPhase.Failed or ConnPhase.Off && SatraState.I.Mode == ConnModes.Ports && SatraState.I.AutoStart && _autoStarted && !_userOff) await ConnectAsync(pick: false);
     }
 
     public async Task<bool> AddFromClipboardAsync(string? text)

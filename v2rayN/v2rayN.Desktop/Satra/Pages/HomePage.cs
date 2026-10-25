@@ -4,16 +4,19 @@ using v2rayN.Desktop.Satra.Services;
 
 namespace v2rayN.Desktop.Satra.Pages;
 
-/// <summary>Home: connect orb, mode selector, smart-routing toggle, active server, live speed.</summary>
+/// <summary>Home (v1.8): one power button (core on/off), a 3-way "how apps use it" choice (ports / system proxy /
+/// whole device), the active server with the fastest alternatives one click away, live speed.</summary>
 public class HomePage : IPage
 {
     private readonly Grid _root = new() { Margin = new Thickness(36, 28, 36, 28), RowDefinitions = new RowDefinitions("Auto,*,Auto,Auto,Auto,Auto") };
-    private readonly ContentControl _modeHost = new() { MaxWidth = 640, Margin = new Thickness(0, 0, 0, 10) };
-    private readonly ContentControl _routeHost = new() { MaxWidth = 640, Margin = new Thickness(0, 0, 0, 14) };
+    private readonly ContentControl _modeHost = new() { MaxWidth = 640, Margin = new Thickness(0, 0, 0, 18) };
+    private readonly ContentControl _routeHost = new() { MaxWidth = 640 };
     private string _modeSig = "";
     private string _routeSig = "";
-    private readonly ConnectOrb _orb = new() { Width = 168, Height = 168, HorizontalAlignment = HorizontalAlignment.Center };
-    private readonly TextBlock _status = Ui.T("", 26, FontWeight.Bold);
+    private readonly ConnectOrb _orb = new() { Width = 136, Height = 136, HorizontalAlignment = HorizontalAlignment.Center };
+    private readonly TextBlock _status = Ui.T("", 24, FontWeight.Bold);
+    private readonly ContentControl _ports = new() { HorizontalAlignment = HorizontalAlignment.Center };
+    private string _portsSig = "";
     private readonly TextBlock _hint = Ui.T("", 13.5, FontWeight.Normal, P.Text2);
     private readonly TextBlock _timer = Ui.T("", 13.5, FontWeight.Medium, P.Text2);
     private readonly ContentControl _server = new();
@@ -25,6 +28,7 @@ public class HomePage : IPage
     private readonly Sparkline _spark = new() { Height = 54 };
     private readonly Border _modeChip = new();
     private string _lastServerKey = "";
+    private string _pickSig = "";
     private string? _pingTargetId;
     private readonly Border _updateBtnHost = new() { IsVisible = false };
     private readonly WorldMap _map = new() { Margin = new Thickness(-36, -28), ClipToBounds = true };
@@ -57,7 +61,7 @@ public class HomePage : IPage
         _status.HorizontalAlignment = _hint.HorizontalAlignment = _timer.HorizontalAlignment = HorizontalAlignment.Center;
         _orb.Clicked += () => _ = SatraCore.I.ToggleAsync();
         _hint.TextWrapping = TextWrapping.Wrap; _hint.TextAlignment = TextAlignment.Center; _hint.MaxWidth = 460;
-        var center = Ui.V(10, _orb, _status, _timer, _hint);
+        var center = Ui.V(8, _orb, _status, _timer, _hint, _ports);
         center.Margin = new Thickness(0, 12, 0, 18);
         center.VerticalAlignment = VerticalAlignment.Center;
         center.HorizontalAlignment = HorizontalAlignment.Center;
@@ -96,14 +100,14 @@ public class HomePage : IPage
         _speedHost.MaxWidth = 640;
         Grid.SetRow(_speedHost, 5);
         _root.Children.Add(_speedHost);
-        _speedHost.PropertyChanged += (_, e) => { if (e.Property == ContentControl.ContentProperty) statCard.IsVisible = _routeHost.IsVisible = _speedHost.Content == null; };
+        _speedHost.PropertyChanged += (_, e) => { if (e.Property == ContentControl.ContentProperty) statCard.IsVisible = _speedHost.Content == null; };
 
         // no UI work while the window is hidden/minimized or Home is not on screen
         bool Shown() => _root.IsEffectivelyVisible && _root.IsAttachedToVisualTree() && SatraShell.I.Window is { IsVisible: true, WindowState: not WindowState.Minimized };
         SatraCore.I.Speed += (_, _) => Dispatcher.UIThread.Post(() => { if (Shown()) UpdateSpeed(); });
         _root.AttachedToVisualTree += (_, _) => UpdateSpeed();
         SatraCore.I.Ticked += () => Dispatcher.UIThread.Post(() => { if (!Shown()) return;  { var c = SatraCore.I; _timer.Text = c.Since is { } s ? (DateTime.Now - s).ToString(@"hh\:mm\:ss") : ""; } });
-        PingEngine.I.Changed += () => Dispatcher.UIThread.Post(UpdateHomePing);
+        PingEngine.I.Changed += () => Dispatcher.UIThread.Post(() => { UpdateHomePing(); if (Shown() && PickSig() != _pickSig) Refresh(); });
     }
 
     private async Task AddAsync() => await SatraCore.I.AddFromClipboardAsync(await SatraShell.I.ClipboardText());
@@ -150,16 +154,18 @@ public class HomePage : IPage
         var c = SatraCore.I;
         _orb.Phase = c.Phase;
         _orb.Kick();
+        var m = SatraState.I.Mode;
         (_status.Text, _hint.Text, var col) = c.Phase switch
         {
-            ConnPhase.On when SatraState.I.Mode == "socks" => (L.S("proxy_running"), L.S("proxy_on_d"), P.Success),
-            ConnPhase.On => (L.S("connected"), L.S("tap_disconnect"), P.Success),
-            ConnPhase.Off when SatraState.I.Mode == "socks" => (L.S("disconnected"), L.S("proxy_off_d"), P.Text),
-            ConnPhase.Connecting => (L.S("connecting"), SatraState.I.SmartConnect ? L.S("smart_desc") : "", P.Accent),
+            ConnPhase.On when c.ServerSilent => (L.S("st_on_" + Short(m)), L.S("srv_no_answer"), P.Warning),
+            ConnPhase.On => (L.S("st_on_" + Short(m)), L.S("d_on_" + Short(m)), P.Success),
+            ConnPhase.Connecting => (L.S("connecting"), L.S("d_connecting"), P.Accent),
             ConnPhase.Disconnecting => (L.S("disconnecting"), "", P.Text2),
-            ConnPhase.Failed => (L.S("failed"), L.S("retry"), P.Danger),
-            _ => (L.S("disconnected"), L.S("tap_connect"), P.Text),
+            ConnPhase.Failed => (L.S("failed"), c.LastError ?? L.S("retry"), P.Danger),
+            _ => (L.S("st_off"), L.S("d_off"), P.Text),
         };
+        var psig = $"{c.Phase == ConnPhase.On}{m}{L.Lang}";
+        if (psig != _portsSig) { _portsSig = psig; _ports.Content = c.Phase == ConnPhase.On && m != ConnModes.Tun ? PortChips() : null; }
         _status.Foreground = P.B(col);
         _timer.Text = c.Since is { } s ? (DateTime.Now - s).ToString(@"hh\:mm\:ss") : "";
         _timer.IsVisible = c.Phase == ConnPhase.On;
@@ -171,16 +177,18 @@ public class HomePage : IPage
         _modeChip.Padding = new Thickness(8, 2);
         _modeChip.HorizontalAlignment = HorizontalAlignment.Left;
 
-        var msig = $"{SatraState.I.Mode}{c.Phase == ConnPhase.On}{L.Lang}";
+        var msig = $"{SatraState.I.Mode}{c.Phase}{L.Lang}";
         if (msig != _modeSig) { _modeSig = msig; _modeHost.Content = ModeSelector(); }
 
         var rsig = $"{SatraState.I.SmartRouting}{SatraState.I.Routing}{L.Lang}";
-        if (rsig != _routeSig) { _routeSig = rsig; _routeHost.Content = SmartRoutingCard(); }
+        if (rsig != _routeSig) { _routeSig = rsig; _routeHost.Content = null; _modeSig = ""; }
+        if (msig != _modeSig) { _modeSig = msig; _modeHost.Content = ModeSelector(); }
 
         var a = c.Active;
         _map.Show(c.Phase == ConnPhase.On && a != null ? NetBadges.ExitCc(a) : null);
         // Rebuild card when server / connect state / smart changes — not on every ping tick
-        var key = $"{a?.IndexId}|{c.Phase}|{(a != null ? NetBadges.ExitCc(a) : null)}|{SatraState.I.SmartConnect}|{L.Lang}";
+        _pickSig = PickSig();
+        var key = $"{a?.IndexId}|{c.Phase}|{(a != null ? NetBadges.ExitCc(a) : null)}|{SatraState.I.SmartConnect}|{L.Lang}|{_pickSig}";
         if (key != _lastServerKey)
         {
             _lastServerKey = key;
@@ -197,75 +205,125 @@ public class HomePage : IPage
         _homePing.Content = ServersPage.PingPill(ServersPage.Delay(a), PingEngine.I.Get(a.IndexId).Status == PingStatus.Pending);
     }
 
-    private static readonly string[] Modes = ["tun", "proxy", "socks"];
+    private static string Short(string mode) => mode == ConnModes.Tun ? "tun" : mode == ConnModes.SystemProxy ? "proxy" : "ports";
 
-    /// VPN (whole device) · System proxy · Proxy only. Changing it while connected reconnects automatically.
-    private Control ModeSelector()
+    /// Copyable local endpoints, shown while the ports are open.
+    private static Control PortChips()
     {
-        var st = SatraState.I;
-        var seg = SettingsPage.Segmented([L.S("mode_vpn"), L.S("mode_proxy"), L.S("mode_proxy_only")], Math.Max(0, Array.IndexOf(Modes, st.Mode)), i =>
-        {
-            if (st.Mode == Modes[i]) return;
-            st.Mode = Modes[i];
-            SatraState.Save();
-            _modeSig = "";
-            Refresh();
-            if (SatraCore.I.Phase == ConnPhase.On) _ = SatraCore.I.ReconnectAsync();
-        });
-        if (st.Mode != "socks") return seg;
         var port = AppManager.Instance.GetLocalPort(EInboundProtocol.socks);
-        var on = SatraCore.I.Phase == ConnPhase.On;
         Control Chip(string label, string value)
         {
             var b = new Border
             {
-                Background = P.B(on ? P.SuccessSoft : P.Fill), CornerRadius = Ui.RCtl, Padding = new Thickness(12, 6), Cursor = new Cursor(StandardCursorType.Hand),
-                Child = Ui.H(8, Ui.T(label, 11, FontWeight.SemiBold, P.Text3), Ui.T(Ui.Ltr(value), 13, FontWeight.SemiBold, on ? P.Success : P.Text2), Ui.T("⧉", 13, FontWeight.Normal, P.Text3)),
+                Background = P.B(P.Fill), CornerRadius = Ui.RPill, Padding = new Thickness(12, 5), Cursor = new Cursor(StandardCursorType.Hand),
+                Child = Ui.H(8, Ui.T(label, 11, FontWeight.SemiBold, P.Text3), Ui.Num(Ui.T(Ui.Ltr(value), 12.5, FontWeight.SemiBold, P.Text)), Ui.T("⧉", 12, FontWeight.Normal, P.Text3)),
             };
-            ToolTip.SetTip(b, L.S("copied"));
+            ToolTip.SetTip(b, L.S("copy"));
             b.PointerReleased += (_, _) => _ = SatraShell.I.Copy(value);
             return Ui.Pressable(b);
         }
         // SOCKS5 and HTTP share one mixed inbound port in v2rayN/Xray
-        var addr = $"{Global.Loopback}:{port}";
-        var chips = new WrapPanel { HorizontalAlignment = HorizontalAlignment.Center, ItemSpacing = 8, LineSpacing = 6 };
-        chips.Children.Add(Chip("SOCKS5 · HTTP", addr));
-        chips.Children.Add(Chip("URL", "socks5://" + addr));
-        if (!on) chips.Children.Add(new Border { Padding = new Thickness(4, 6), Child = Ui.Caption(L.S("proxy_closed"), P.Text3) });
-        return Ui.V(8, seg, chips);
+        var chips = new WrapPanel { HorizontalAlignment = HorizontalAlignment.Center, ItemSpacing = 8, LineSpacing = 6, Margin = new Thickness(0, 4, 0, 0) };
+        chips.Children.Add(Chip("SOCKS5 · HTTP", $"{Global.Loopback}:{port}"));
+        return chips;
     }
 
-    /// Prominent smart-routing toggle: local sites direct while VPN stays on; off = full tunnel.
-    private Control SmartRoutingCard()
+    /// Three clear tiles: Ports only · System proxy · Whole device. The selected one is what is active now.
+    private Control ModeSelector()
     {
         var st = SatraState.I;
+        var on = SatraCore.I.Phase == ConnPhase.On;
+        var grid = new UniformGrid { Rows = 1 };
+        foreach (var (mode, glyph, sub) in new[] { (ConnModes.Ports, "⌁", "m_ports_d"), (ConnModes.SystemProxy, "◎", "m_proxy_d"), (ConnModes.Tun, "⛨", "m_tun_d") })
+        {
+            var sel = st.Mode == mode;
+            var live = sel && on;
+            var accent = live ? P.Success : P.Accent;
+            var title = Ui.T(L.S(ConnModes.Label(mode)), 13.5, FontWeight.SemiBold, sel ? P.Text : P.Text2);
+            var desc = Ui.T(L.S(sub), 11.5, FontWeight.Normal, P.Text3, TextWrapping.Wrap);
+            var dot = new Border { Width = 7, Height = 7, CornerRadius = Ui.RPill, Background = live ? P.B(P.Success) : sel ? P.B(P.Accent) : Brushes.Transparent, VerticalAlignment = VerticalAlignment.Center };
+            var tile = new Border
+            {
+                Margin = new Thickness(4, 0), Padding = new Thickness(14, 12), CornerRadius = Ui.RCtl, MinHeight = 78,
+                Background = P.B(sel ? P.Lerp(P.Surface, accent, 0.10) : P.Surface),
+                BorderBrush = P.B(sel ? P.Lerp(P.Surface, accent, 0.55) : P.Separator), BorderThickness = new Thickness(1),
+                Cursor = new Cursor(StandardCursorType.Hand),
+                Child = Ui.V(4, Ui.H(8, Ui.T(glyph, 15, FontWeight.Normal, sel ? accent : P.Text3), title, dot), desc),
+            };
+            tile.Transitions = new Avalonia.Animation.Transitions { new Avalonia.Animation.BrushTransition { Property = Border.BackgroundProperty, Duration = TimeSpan.FromMilliseconds(220) } };
+            Avalonia.Automation.AutomationProperties.SetName(tile, L.S(ConnModes.Label(mode)));
+            tile.PointerReleased += (_, _) => { if (SatraCore.I.Phase is ConnPhase.Connecting or ConnPhase.Disconnecting) return; _ = SatraCore.I.SetModeAsync(mode); };
+            grid.Children.Add(Ui.Pressable(tile));
+        }
+        grid.Margin = new Thickness(-4, 0);
+        // smart routing lives with the mode: it decides which sites skip the server in every mode
         var region = st.Routing switch { "russia" => L.S("routing_russia"), "china" => L.S("routing_china"), _ => L.S("routing_iran") };
-        var title = $"{L.S("smart_routing")} ({region})";
-        var note = st.SmartRouting ? L.S("smart_routing_d") : L.S("smart_routing_off_d");
         var sw = Ui.Switch(st.SmartRouting, v =>
         {
             st.SmartRouting = v;
             SatraState.Save();
-            if (v)
-            {
-                _ = SatraCore.I.Main.ApplyRegionalPreset(LocalRules.Preset(st.Routing));
-            }
+            if (v) _ = SatraCore.I.Main.ApplyRegionalPreset(LocalRules.Preset(st.Routing));
             _ = SatraCore.I.ApplyLocalLimitsAsync();
             _routeSig = "";
             Refresh();
         });
-        var row = Ui.ListRow(title, note, sw, glyph: "⇄", glyphColor: st.SmartRouting ? P.Accent : P.Text3);
-        return Ui.Enter(Ui.Group(row));
+        var smart = new Grid { ColumnDefinitions = new ColumnDefinitions("Auto,*,Auto") };
+        var g = Ui.T("⇄", 14, FontWeight.Normal, st.SmartRouting ? P.Accent : P.Text3);
+        g.Margin = new Thickness(0, 1, 10, 0); g.VerticalAlignment = VerticalAlignment.Top;
+        var txt = Ui.V(1, Ui.T($"{L.S("smart_routing")} · {region}", 13, FontWeight.Medium), Ui.Caption(st.SmartRouting ? L.S("smart_routing_d") : L.S("smart_routing_off_d"), P.Text3));
+        sw.VerticalAlignment = VerticalAlignment.Center; sw.Margin = new Thickness(12, 0, 0, 0);
+        Grid.SetColumn(txt, 1); Grid.SetColumn(sw, 2);
+        smart.Children.Add(g); smart.Children.Add(txt); smart.Children.Add(sw);
+        smart.Margin = new Thickness(2, 12, 2, 0);
+        return Ui.Enter(Ui.V(8, Ui.Section(L.S("route_title")), grid, smart));
     }
 
+    private static string PickSig() => string.Join(",", Picks().Select(p => p.IndexId + ":" + (ServersPage.Delay(p) > 0 ? ServersPage.Delay(p) / 25 : ServersPage.Delay(p))));
+    private static List<ProfileItemModel> Picks()
+    {
+        var c = SatraCore.I;
+        return ConnModes.QuickPicks(c.Profiles.ProfileItems.ToList(), p => p.IndexId, ServersPage.Delay, c.Active?.IndexId);
+    }
+
+    /// The active server, then the fastest alternatives (one click switches; the core reloads on it).
     private Control ServerCard(ProfileItemModel? a)
     {
-        if (a == null)
+        if (a == null) return NoServerCard();
+        var rows = new StackPanel { Spacing = 0 };
+        rows.Children.Add(ActiveRow(a));
+        var picks = Picks();
+        if (picks.Count > 0)
         {
-            _pingTargetId = null;
-            return Ui.Card(Ui.Row(Ui.V(4, Ui.T(L.S("no_server"), 16, FontWeight.SemiBold), Ui.Caption(L.S("add_hint"))),
-                Ui.Btn(L.S("add_clip"), Ui.Kind.Primary, () => _ = AddAsync())), new Thickness(18, 14));
+            rows.Children.Add(new Border { Height = 1, Background = P.B(P.Separator), Margin = new Thickness(0, 10, 0, 6) });
+            foreach (var p in picks) rows.Children.Add(PickRow(p));
         }
+        var head = Ui.Row(Ui.Section(L.S("server")), Ui.H(4,
+            Ui.Btn(L.S("ping_all_short"), Ui.Kind.Ghost, () => _ = PingEngine.I.PingAllAsync(SatraCore.I.Profiles.ProfileItems.ToList()), "◎", 12),
+            Ui.Btn(L.S("all_servers") + "  ›", Ui.Kind.Ghost, () => SatraShell.I.Go("servers"), size: 12)));
+        return Ui.Enter(Ui.V(6, head, Ui.Card(rows, new Thickness(16, 12))));
+    }
+
+    private Control NoServerCard() => Ui.Card(Ui.Row(Ui.V(4, Ui.T(L.S("no_server"), 16, FontWeight.SemiBold), Ui.Caption(L.S("add_hint"))),
+        Ui.Btn(L.S("add_clip"), Ui.Kind.Primary, () => _ = AddAsync())), new Thickness(18, 14));
+
+    private Control PickRow(ProfileItemModel p)
+    {
+        var name = Ui.T(Ui.CleanName(p.Remarks), 13.5, FontWeight.Medium, P.Text);
+        name.TextTrimming = TextTrimming.CharacterEllipsis;
+        var row = new Border
+        {
+            Padding = new Thickness(8, 7), CornerRadius = Ui.RCtl, Background = Brushes.Transparent, Cursor = new Cursor(StandardCursorType.Hand),
+            Child = Ui.Row(Ui.H(10, NetBadges.FlagView(NetBadges.ExitCc(p), 18), name), ServersPage.PingPill(ServersPage.Delay(p), PingEngine.I.Get(p.IndexId).Status == PingStatus.Pending)),
+        };
+        row.PointerEntered += (_, _) => row.Background = P.B(P.Fill);
+        row.PointerExited += (_, _) => row.Background = Brushes.Transparent;
+        row.PointerReleased += (_, _) => _ = SatraCore.I.UseAsync(p);
+        ToolTip.SetTip(row, L.S("cm_set_active"));
+        return Ui.Pressable(row);
+    }
+
+    private Control ActiveRow(ProfileItemModel a)
+    {
         _pingTargetId = a.IndexId;
         var cc = NetBadges.ExitCc(a);
         var flag = NetBadges.FlagView(cc, 26);
@@ -282,8 +340,8 @@ public class HomePage : IPage
         // Fresh ContentControl each rebuild — reusing _homePing under a new parent crashes Avalonia.
         _homePing = new ContentControl { Content = ServersPage.PingPill(ServersPage.Delay(a), PingEngine.I.Get(a.IndexId).Status == PingStatus.Pending) };
         var pingBtn = Ui.IconBtn("◎", () => _ = PingEngine.I.PingOneAsync(a), L.S("ping"), P.Text2, 15);
-        var right = Ui.H(8, _homePing, pingBtn, Ui.Btn(L.S("servers"), Ui.Kind.Ghost, () => SatraShell.I.Go("servers"), size: 13));
-        return Ui.Enter(Ui.Card(Ui.Row(left, right), new Thickness(18, 12)));
+        var right = Ui.H(8, _homePing, pingBtn);
+        return Ui.Row(left, right);
     }
 
     private static Control? QuotaPill(string? subId)
