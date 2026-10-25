@@ -77,6 +77,7 @@ public static class DevDriver
                 await ConfigHandler.RemoveServers(cfgD, items);
                 SatraCore.I.Profiles.RefreshServers(); break;
             case "pingname": _ = PingEngine.I.PingOneAsync(SatraCore.I.Profiles.ProfileItems.First(p => p.Remarks.Contains(arg))); break;
+            case "use": await SatraCore.I.UseAsync(SatraCore.I.Profiles.ProfileItems.First(p => p.Remarks.Contains(arg))); break;
             case "subadd": await SatraCore.I.AddFromClipboardAsync(arg); break;
             case "subup": await SatraCore.I.UpdateSubsAsync(); File.AppendAllText(Path.Combine(dir, "subs.txt"), $"{DateTime.Now:HH:mm:ss} via={SubFallback.LastVia}\n"); break;
             case "subs":
