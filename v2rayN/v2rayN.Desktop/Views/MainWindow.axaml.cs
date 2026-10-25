@@ -19,6 +19,7 @@ public partial class MainWindow : WindowBase<MainWindowViewModel>
         InitializeComponent();
 
         _config = AppManager.Instance.Config;
+        v2rayN.Desktop.Satra.Services.LogBuffer.Start();
         _manager = new WindowNotificationManager(TopLevel.GetTopLevel(this)) { MaxItems = 3, Position = NotificationPosition.TopRight };
         KeyDown += MainWindow_KeyDown;
 

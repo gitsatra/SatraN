@@ -152,6 +152,7 @@ public class SettingsPage : IPage
         {
             if (Cfg.UiItem.CurrentLanguage == langs[i]) return;
             Cfg.UiItem.CurrentLanguage = langs[i];
+            SatraTray.Relocalize();
             Thread.CurrentThread.CurrentUICulture = new CultureInfo(langs[i]);
             _ = ConfigHandler.SaveConfig(Cfg);
             if (SatraShell.I.Parent is ContentControl cc)

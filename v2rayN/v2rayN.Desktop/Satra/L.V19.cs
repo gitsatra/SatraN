@@ -57,6 +57,18 @@ public static partial class L
         ["mode_gate_d"] = ("Fortress changes the whole system's routing, so it only runs in Whole device mode.", "دژ مسیر کل سیستم را تغییر می‌دهد؛ فقط در حالت کل دستگاه اجرا می‌شود.", "«Крепость» меняет маршрутизацию всей системы, поэтому работает только в режиме «Всё устройство»."),
         ["mode_applies_next"] = ("Applies when you connect", "هنگام اتصال اعمال می‌شود", "Применится при подключении"),
         ["mode_done"] = ("Done", "انجام شد", "Готово"),
+        ["log_all"] = ("All", "همه", "Все"),
+        ["log_info"] = ("Info", "اطلاعات", "Инфо"),
+        ["log_warn"] = ("Warnings", "هشدارها", "Предупр."),
+        ["log_error"] = ("Errors", "خطاها", "Ошибки"),
+        ["log_search"] = ("Search logs", "جستجو در لاگ", "Поиск в журнале"),
+        ["log_follow"] = ("Live", "زنده", "Живой"),
+        ["log_copy"] = ("Copy", "کپی", "Копировать"),
+        ["log_export"] = ("Export", "ذخیره", "Экспорт"),
+        ["log_clear"] = ("Clear", "پاک کردن", "Очистить"),
+        ["log_empty"] = ("Nothing logged yet. Turn on to see what the core says.", "هنوز لاگی نیست. روشن کنید تا پیام‌های هسته را ببینید.", "Пока пусто. Включите, чтобы увидеть сообщения ядра."),
+        ["log_count"] = ("{0} lines", "{0} خط", "{0} строк"),
+        ["log_saved"] = ("Log saved", "لاگ ذخیره شد", "Журнал сохранён"),
         ["logs"] = ("Logs", "لاگ‌ها", "Журнал"),
     };
 }
