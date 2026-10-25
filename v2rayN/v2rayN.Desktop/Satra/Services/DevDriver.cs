@@ -95,6 +95,7 @@ public static class DevDriver
             case "exportall": await ServersPage.ExportAll(); File.WriteAllText(Path.Combine(dir, "export.txt"), await SatraShell.I.ClipboardText() ?? ""); break;
             case "dedup": await ServersPage.Dedup(); break;
             case "dumpall": File.WriteAllLines(Path.Combine(dir, "servers.txt"), SatraCore.I.Profiles.ProfileItems.Select(p => $"{p.ConfigType} {p.Remarks} {p.Address}:{p.Port}")); break;
+            case "tray": File.WriteAllLines(Path.Combine(dir, "tray.txt"), SatraTray.Dump()); break;
             case "dump": File.WriteAllLines(Path.Combine(dir, "servers.txt"), SatraCore.I.Profiles.ProfileItems.Select(p => $"{p.ConfigType} {p.Remarks} {p.Address}:{p.Port} {p.Network} {p.StreamSecurity}")); break;
             case "scat": SettingsPage.DevCat = arg; SatraShell.I.Go("settings"); break;
             case "upcheck": await AutoUpdater.RunAsync(true); break;

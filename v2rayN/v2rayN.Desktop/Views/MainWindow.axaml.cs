@@ -33,6 +33,7 @@ public partial class MainWindow : WindowBase<MainWindowViewModel>
                 host.Content = new SatraShell(this);
                 DevDriver.Start();
                 AutoUpdater.Start();
+                SatraTray.Attach();
                 // Local/CI proof: Wayland often drops xdotool clicks; env starts VPN once after UI is up.
                 if (Environment.GetEnvironmentVariable("SATRAN_AUTO_CONNECT") == "1")
                 {
