@@ -42,6 +42,7 @@ public class SatraCore : ReactiveObject
         AppEvents.DispatcherStatisticsRequested.AsObservable().ObserveOn(RxSchedulers.MainThreadScheduler).Subscribe(OnStats);
         // Ping/speed rows update themselves via SpeedTestUpdated; do not RaiseChanged (that rebuilds pages).
         CoreConfigHandler.MuxPref = n => SatraState.I.Mux.TryGetValue(Pages.ServersPage.Key(n), out var v) ? v : null;
+        CoreConfigHandler.ModePref = () => ServiceLib.Satra.ProfileModes.Normalize(SatraState.I.Profile);
         CoreManager.StartGate = () => Phase is ConnPhase.Connecting or ConnPhase.On;
         CoreManager.TunFailed = e => Avalonia.Threading.Dispatcher.UIThread.Post(async () => { Logging.SaveLog("TUN failed -> disconnect (network left intact): " + e); if (Phase is not (ConnPhase.Connecting or ConnPhase.On)) return; await DisconnectAsync(); Toast?.Invoke(L.S("tun_failed")); Set(ConnPhase.Failed); });
         ServiceLib.Satra.TunHelper.SessionLost = () => Avalonia.Threading.Dispatcher.UIThread.Post(async () => { if (Phase != ConnPhase.On) return; Logging.SaveLog("TUN helper session lost -> reconnect"); await DisconnectAsync(); await Task.Delay(2500); await ConnectAsync(); });
@@ -80,26 +81,43 @@ public class SatraCore : ReactiveObject
     }
 
     /// <summary>Switch how traffic reaches the core (ports / system proxy / TUN). Off -> turns on in that mode.</summary>
+    /// <summary>v1.9 state model: picking a mode only selects it. Nothing connects until the user presses the
+    /// power button (only the 'Start with the app' Ports auto-start on launch connects by itself). If something is
+    /// running in another mode it is stopped cleanly, so the OS never keeps a proxy/tunnel the user did not ask for.</summary>
     public async Task SetModeAsync(string mode)
     {
         if (!ConnModes.IsValid(mode)) return;
         var was = SatraState.I.Mode;
+        if (was == mode) return;
         SatraState.I.Mode = mode;
+        // Fortress needs the whole system; outside TUN it steps down to Secure (closest protection that still applies)
+        if (!ServiceLib.Satra.ProfileModes.Available(SatraState.I.Profile, mode == ConnModes.Tun)) SatraState.I.Profile = ServiceLib.Satra.ProfileModes.Secure;
         SatraState.Save();
-        if (Phase is ConnPhase.Connecting or ConnPhase.Disconnecting) { await DisconnectAsync(); await ConnectAsync(pick: false); return; }
-        if (Phase == ConnPhase.On && was == mode) return;
-        if (Phase == ConnPhase.On && ConnModes.CanSwitchLive(was, mode))
-        {
-            // ports <-> system proxy: the core keeps running, only the OS proxy setting flips
-            Status.SystemProxySelected = (int)(mode == ConnModes.SystemProxy ? ESysProxyType.ForcedChange : ESysProxyType.ForcedClear);
-            _socksOn = true;
-            Logging.SaveLog($"Satra mode {was} -> {mode} (live)");
-            Changed?.Invoke();
-            return;
-        }
-        if (Phase == ConnPhase.On) await DisconnectAsync();
-        await ConnectAsync(pick: false);
+        Logging.SaveLog($"Satra mode {was} -> {mode} (selected, waiting for connect)");
+        if (Phase is ConnPhase.On or ConnPhase.Connecting or ConnPhase.Failed) await DisconnectAsync();
+        ModeAwaitingConnect = true;
+        Changed?.Invoke();
     }
+
+    /// <summary>Pick a connection profile (Normal/Game/Secure/...). Never connects by itself; when already connected
+    /// the core restarts with the new overlay (same as switching a server). Fortress is refused outside whole-device mode.</summary>
+    public async Task<bool> SetProfileAsync(string id)
+    {
+        id = ServiceLib.Satra.ProfileModes.Normalize(id);
+        if (!ServiceLib.Satra.ProfileModes.Available(id, SatraState.I.Mode == ConnModes.Tun)) return false;
+        if (SatraState.I.Profile == id) return true;
+        SatraState.I.Profile = id;
+        SatraState.Save();
+        Logging.SaveLog($"Satra profile -> {id}");
+        ProfileChanged?.Invoke(id);
+        if (Phase == ConnPhase.On) { await DisconnectAsync(); await ConnectAsync(pick: false); }
+        Changed?.Invoke();
+        return true;
+    }
+    public event Action<string>? ProfileChanged;
+
+    /// <summary>True after the user picked a mode and has not pressed connect since (Home shows "Press to start …").</summary>
+    public bool ModeAwaitingConnect { get; set; }
 
     public bool IsRouted => Cfg.SystemProxyItem.SysProxyType == ESysProxyType.ForcedChange || Cfg.TunModeItem.EnableTun || (SatraState.I.Mode == "socks" && _socksOn);
     private bool _socksOn;
@@ -213,6 +231,7 @@ public class SatraCore : ReactiveObject
 
     public async Task ConnectAsync(bool pick)
     {
+        ModeAwaitingConnect = false;
         if (Active == null && Profiles.ProfileItems.Count == 0)
         {
             Toast?.Invoke(L.S("no_server"));

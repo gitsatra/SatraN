@@ -71,6 +71,8 @@ public class SatraState
     public bool SmartConnect { get; set; } = true;
     /// <summary>proxy = system proxy, tun = whole computer, socks = proxy only (apps connect to the local port).</summary>
     public string Mode { get; set; } = ServiceLib.Satra.ConnModes.Default;
+    /// <summary>v1.9 connection profile overlay id (ServiceLib.Satra.ProfileModes; MODES-SPEC.md).</summary>
+    public string Profile { get; set; } = "normal";
     /// <summary>Start the core on the selected config when the app opens (ports ready without pressing Connect).</summary>
     public bool AutoStart { get; set; } = true;
     public bool SmartRouting { get; set; } = true;

@@ -8,6 +8,9 @@ public static class CoreConfigHandler
     /// <summary>Satra: per-server mux choice that survives subscription refreshes (null = use the node's own setting).</summary>
     public static Func<ProfileItem, bool?>? MuxPref { get; set; }
 
+    /// <summary>Satra: active connection mode overlay (MODES-SPEC.md); null/normal = untouched output.</summary>
+    public static Func<string?>? ModePref { get; set; }
+
     private static readonly string _tag = "CoreConfigHandler";
 
     /// <summary>Satra: never hand Xray a geo code its .dat files do not contain (Xray would refuse to start).</summary>
@@ -41,7 +44,10 @@ public static class CoreConfigHandler
         }
         if (fileName.IsNotEmpty() && result.Data != null)
         {
-            await File.WriteAllTextAsync(fileName, Xr(result.Data.ToString()!, context.RunCoreType));
+            var text = result.Data.ToString()!;
+            if (node.ConfigType != EConfigType.Custom)
+                text = ServiceLib.Satra.ProfileModes.Apply(text, context.RunCoreType == ECoreType.sing_box, ModePref?.Invoke(), context.IsTunEnabled);
+            await File.WriteAllTextAsync(fileName, Xr(text, context.RunCoreType));
         }
 
         return result;
