@@ -28,9 +28,11 @@ public static class SatraAppUpdate
 
     public static async Task<CheckResult> CheckAsync(CancellationToken ct = default)
     {
+        // Hub first; GitHub is consulted when the Hub is unreachable or has nothing newer (the Hub may lag behind).
         var hub = await CheckHubAsync(ct);
-        if (hub.LatestTag != null) return hub;
-        return await CheckGitHubAsync(ct);
+        if (hub.HasUpdate) return hub;
+        var gh = await CheckGitHubAsync(ct);
+        return gh.HasUpdate || hub.LatestTag == null ? gh : hub;
     }
 
     private static async Task<CheckResult> CheckGitHubAsync(CancellationToken ct)
