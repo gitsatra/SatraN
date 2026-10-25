@@ -23,7 +23,10 @@ InstallDir "$PROGRAMFILES64\${APP}"
 InstallDirRegKey HKLM "${UNKEY}" "InstallLocation"
 RequestExecutionLevel admin
 BrandingText "${APP} ${VERSION}"
-VIProductVersion "${VERSION}.0"
+!ifndef NUMVER
+  !define NUMVER "${VERSION}"
+!endif
+VIProductVersion "${NUMVER}.0"
 VIAddVersionKey "ProductName" "${APP}"
 VIAddVersionKey "CompanyName" "Satra"
 VIAddVersionKey "FileDescription" "${APP} Setup"

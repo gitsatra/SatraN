@@ -83,7 +83,7 @@ if rid.startswith("win"):
     # Standard wizard installer (NSIS): Next/Next/Install/Finish, Program Files, Helper service, full uninstaller.
     nsi = os.path.join(os.path.dirname(__file__), "windows", "SatraN.nsi")
     setup_exe = os.path.abspath(os.path.join(out, f"SatraN-Setup-{ver}.exe"))
-    subprocess.check_call(["makensis", "-V2", f"-DVERSION={ver}", f"-DSRC={os.path.abspath(app)}",
+    subprocess.check_call(["makensis", "-V2", f"-DVERSION={ver}", f"-DNUMVER={re.match(r'[0-9]+[.][0-9]+[.][0-9]+', ver).group(0)}", f"-DSRC={os.path.abspath(app)}",
                            f"-DOUTFILE={setup_exe}", nsi])
     print("wrote", setup_exe)
 
