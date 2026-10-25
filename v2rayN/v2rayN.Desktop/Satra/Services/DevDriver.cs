@@ -93,6 +93,10 @@ public static class DevDriver
                 var pr = await Task.Run(() => AppManager.Instance.GetProfileItem(Nth(arg).IndexId));
                 var link = FmtHandler.GetShareUri(pr!)!.Replace("#", "#QR-");
                 File.WriteAllBytes(Path.Combine(dir, "qr.png"), QRCodeUtils.GenQRCode(link)!); break;
+            case "backup": await SettingsPage.BackupAsync(arg); break;
+            case "restore": await SettingsPage.RestoreAsync(arg); break;
+            case "scanscreen": File.WriteAllText(Path.Combine(dir, "scan.txt"), await Parity.ScanScreenAsync() ?? "(none)"); break;
+            case "mux": await ServersPage.ToggleMux(Nth(arg)); break;
             case "qrfile": await ServersPage.ImportQrFile(arg); break;
             case "exportall": await ServersPage.ExportAll(); File.WriteAllText(Path.Combine(dir, "export.txt"), await SatraShell.I.ClipboardText() ?? ""); break;
             case "dedup": await ServersPage.Dedup(); break;

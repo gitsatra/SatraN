@@ -38,6 +38,7 @@ public class SatraCore : ReactiveObject
         if (Phase == ConnPhase.On) Since = DateTime.Now;
         AppEvents.DispatcherStatisticsRequested.AsObservable().ObserveOn(RxSchedulers.MainThreadScheduler).Subscribe(OnStats);
         // Ping/speed rows update themselves via SpeedTestUpdated; do not RaiseChanged (that rebuilds pages).
+        CoreConfigHandler.MuxPref = n => SatraState.I.Mux.TryGetValue(Pages.ServersPage.Key(n), out var v) ? v : null;
         CoreManager.StartGate = () => Phase is ConnPhase.Connecting or ConnPhase.On;
         CoreManager.TunFailed = _ => Avalonia.Threading.Dispatcher.UIThread.Post(async () => { Logging.SaveLog("TUN failed -> disconnect (network left intact)"); await DisconnectAsync(); });
         ServiceLib.Satra.TunHelper.SessionLost = () => Avalonia.Threading.Dispatcher.UIThread.Post(async () => { if (Phase != ConnPhase.On) return; Logging.SaveLog("TUN helper session lost -> reconnect"); await DisconnectAsync(); await Task.Delay(2500); await ConnectAsync(); });

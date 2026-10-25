@@ -5,6 +5,9 @@ namespace ServiceLib.Handler;
 /// </summary>
 public static class CoreConfigHandler
 {
+    /// <summary>Satra: per-server mux choice that survives subscription refreshes (null = use the node's own setting).</summary>
+    public static Func<ProfileItem, bool?>? MuxPref { get; set; }
+
     private static readonly string _tag = "CoreConfigHandler";
 
     public static async Task<RetResult> GenerateClientConfig(CoreConfigContext context, string? fileName)

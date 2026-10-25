@@ -74,6 +74,7 @@ public class ServersPage : IPage
         menu.Items.Add(Mi(L.S("add_clip"), () => _ = AddAsync()));
         menu.Items.Add(Mi(L.S("ed_add") + "…", () => ServerEditor.Open()));
         menu.Items.Add(Mi(L.S("qr_image") + "…", () => _ = ImportQrImage()));
+        menu.Items.Add(Mi(L.S("qr_screen"), () => _ = ScanScreen()));
         menu.Items.Add(new Separator());
         menu.Items.Add(Mi(L.S("export_all"), () => _ = ExportAll()));
         menu.Items.Add(Mi(L.S("dedup"), () => _ = Dedup()));
@@ -100,6 +101,15 @@ public class ServersPage : IPage
         m.Items.Add(Mi(L.S("cm_edit"), () => ServerEditor.Open(p)));
         m.Items.Add(Mi(L.S("cm_duplicate"), () => _ = Do(async c => await ConfigHandler.CopyServer(c, [await Prof(p)]))));
         m.Items.Add(Mi(L.S("ping"), () => _ = PingEngine.I.PingOneAsync(p)));
+        var mux = new MenuItem { Header = L.S("mux"), ToggleType = MenuItemToggleType.CheckBox };
+        m.Opening += async (_, _) =>
+        {
+            mux.IsChecked = MuxOn(p);
+            // xhttp multiplexes on its own; upstream v2rayN/Xray force mux off there
+            mux.IsEnabled = (await Prof(p)).GetNetwork() != "xhttp";
+        };
+        mux.Click += (_, _) => _ = ToggleMux(p);
+        m.Items.Add(mux);
         m.Items.Add(Mi(L.S("speed"), () => SpeedSheet([p])));
         m.Items.Add(new Separator());
         m.Items.Add(Mi(L.S("ed_copy_link"), () => _ = CopyLink(p)));
@@ -157,6 +167,31 @@ public class ServersPage : IPage
         var path = Avalonia.Platform.Storage.StorageProviderExtensions.TryGetLocalPath(files[0]);
         if (path == null) return;
         await ImportQrFile(path);
+    }
+
+    public static async Task ScanScreen()
+    {
+        var text = await Parity.ScanScreenAsync();
+        if (string.IsNullOrEmpty(text)) { SatraShell.I.Toast(L.S("qr_none")); return; }
+        await SatraCore.I.AddFromClipboardAsync(text);
+    }
+
+    /// <summary>Per-server multiplexing (v2rayN "Mux"); reconnects if this server is live.</summary>
+    public static bool MuxOn(ProfileItemModel p) => SatraState.I.Mux.TryGetValue(Key(p), out var v) && v;
+
+    /// <summary>Key for a ProfileItem (same shape as <see cref="Key(ProfileItemModel)"/>), for the core-config hook.</summary>
+    public static string Key(ProfileItem p) => $"{p.ConfigType}:{p.Address}:{p.Port}:{Ui.CleanName(p.Remarks)}";
+
+    public static async Task ToggleMux(ProfileItemModel p)
+    {
+        var on = !MuxOn(p);
+        SatraState.I.Mux[Key(p)] = on;
+        SatraState.Save();
+        var prof = await Prof(p);
+        prof.MuxEnabled = on;
+        await Do(c => ConfigHandler.AddServer(c, prof));
+        SatraShell.I.Toast(L.S(on ? "mux_on" : "mux_off"));
+        if (SatraCore.I.Active?.IndexId == p.IndexId && SatraCore.I.Phase == ConnPhase.On) _ = SatraCore.I.ReconnectAsync();
     }
 
     public static async Task ImportQrFile(string path)

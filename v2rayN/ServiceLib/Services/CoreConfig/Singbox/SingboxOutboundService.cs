@@ -407,7 +407,7 @@ public partial class CoreConfigSingboxService
     {
         try
         {
-            var muxEnabled = _node.MuxEnabled ?? false;
+            var muxEnabled = CoreConfigHandler.MuxPref?.Invoke(_node) ?? _node.MuxEnabled ?? false;
             if (muxEnabled && _config.Mux4SboxItem.Protocol.IsNotEmpty())
             {
                 var mux = new Multiplex4Sbox()

@@ -89,6 +89,8 @@ public class SatraState
     public Dictionary<string, HubReg> Hub { get; set; } = [];
     public Dictionary<string, SubMeta> Subs { get; set; } = [];
     public Dictionary<string, ExitGeo> Geo { get; set; } = [];
+    /// <summary>Per-server mux, keyed like Geo (type:address:port:name) so it survives subscription updates.</summary>
+    public Dictionary<string, bool> Mux { get; set; } = [];
     public Dictionary<string, DayUsage> Days { get; set; } = [];
     /// <summary>yyyy-MM-dd → ("a:app" | "d:site") → bytes.</summary>
     public Dictionary<string, Dictionary<string, long>> Usage { get; set; } = [];

@@ -234,6 +234,43 @@ public class SettingsPage : IPage
         _body.Children.Add(Ui.Section(L.S("about")));
         _body.Children.Add(Ui.Group(
             Ui.ListRow("SatraN", $"v{Identity.Version} · Xray · v2rayN {Utils.GetVersionInfo()} · {Identity.Os}", Ui.Btn("Exit", Ui.Kind.Danger, () => _ = AppManager.Instance.AppExitAsync(true), size: 13), glyph: "S", glyphColor: P.Accent)));
+        _body.Children.Add(Ui.Section(L.S("backup")));
+        _body.Children.Add(Ui.Group(
+            Ui.ListRow(L.S("backup"), L.S("backup_d"), Ui.Btn(L.S("backup_btn"), Ui.Kind.Tinted, () => _ = BackupAsync(), size: 13), glyph: "⇩", glyphColor: P.Accent),
+            Ui.ListRow(L.S("restore"), L.S("restore_d"), Ui.Btn(L.S("restore_btn"), Ui.Kind.Ghost, () => _ = RestoreAsync(), size: 13), glyph: "⇧", glyphColor: P.Text2)));
+    }
+
+    public static async Task BackupAsync(string? path = null)
+    {
+        if (path == null)
+        {
+            var f = await SatraShell.I.Window.StorageProvider.SaveFilePickerAsync(new Avalonia.Platform.Storage.FilePickerSaveOptions
+            {
+                SuggestedFileName = $"SatraN-backup-{DateTime.Now:yyyy-MM-dd}.zip", DefaultExtension = "zip",
+                FileTypeChoices = [new Avalonia.Platform.Storage.FilePickerFileType("ZIP") { Patterns = ["*.zip"] }],
+            });
+            path = f == null ? null : Avalonia.Platform.Storage.StorageProviderExtensions.TryGetLocalPath(f);
+            if (path == null) return;
+        }
+        var err = await Parity.BackupAsync(path);
+        SatraShell.I.Toast(err == null ? L.S("backup_done") : err);
+    }
+
+    public static async Task RestoreAsync(string? path = null)
+    {
+        if (path == null)
+        {
+            var files = await SatraShell.I.Window.StorageProvider.OpenFilePickerAsync(new Avalonia.Platform.Storage.FilePickerOpenOptions
+            {
+                AllowMultiple = false, FileTypeFilter = [new Avalonia.Platform.Storage.FilePickerFileType("ZIP") { Patterns = ["*.zip"] }],
+            });
+            if (files.Count == 0) return;
+            path = Avalonia.Platform.Storage.StorageProviderExtensions.TryGetLocalPath(files[0]);
+            if (path == null) return;
+        }
+        SatraShell.I.Toast(L.S("restoring"));
+        var err = await Parity.RestoreAsync(path);
+        if (err != null) SatraShell.I.Toast(err == "invalid" ? L.S("restore_invalid") : err);
     }
 
     private void UpdatesSheet() => SatraShell.I.Sheet(L.S("updates"), UpdatesView(), 520);

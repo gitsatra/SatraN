@@ -68,7 +68,7 @@ public partial class CoreConfigV2rayService
         try
         {
             var protocolExtra = _node.GetProtocolExtra();
-            var muxEnabled = _node.MuxEnabled ?? false;
+            var muxEnabled = CoreConfigHandler.MuxPref?.Invoke(_node) ?? _node.MuxEnabled ?? false;
             var outboundSettings = outbound.settings;
             switch (_node.ConfigType)
             {
