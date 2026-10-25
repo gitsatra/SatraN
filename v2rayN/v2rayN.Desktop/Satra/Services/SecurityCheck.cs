@@ -518,6 +518,18 @@ public static class TorExits
     private static List? _mem;
     private static string File_ => Utils.GetConfigPath("tor-exits.txt");
 
+    /// <summary>No network: answers from the in-memory or on-disk list only (used by Home next to the exit IP).</summary>
+    public static bool IsKnownExit(string? ip)
+    {
+        if (string.IsNullOrEmpty(ip)) return false;
+        try
+        {
+            if (_mem == null && File.Exists(File_)) _mem = new List(ConfigAudit.ParseTorList(File.ReadAllText(File_)), File.GetLastWriteTimeUtc(File_));
+        }
+        catch { }
+        return _mem?.Set.Contains(ip) == true;
+    }
+
     public static async Task<List> GetAsync(int? port, CancellationToken ct)
     {
         if (_mem != null && DateTime.UtcNow - _mem.At < TimeSpan.FromHours(6)) return _mem;

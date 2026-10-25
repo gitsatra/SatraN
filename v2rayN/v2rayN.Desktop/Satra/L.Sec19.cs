@@ -166,6 +166,8 @@ public static partial class L
         ["sc_cover_fix"] = ("For everything on the device, choose Whole device (TUN) on Home.", "برای همهٔ برنامه‌های دستگاه، «کل دستگاه» (TUN) را در خانه انتخاب کنید.", "Чтобы защитить всё, выберите «Всё устройство» (TUN) на главной."),
 
         // ── tor ──
+        ["home_tor_exit"] = ("Exit is a Tor node", "خروجی یک گره Tor است", "Выход — узел Tor"),
+        ["home_tor_exit_tip"] = ("This exit IP is on the official Tor exit list. Some sites may block it or ask for a captcha. Tap for details.", "این آی‌پی خروجی در فهرست رسمی خروجی‌های Tor است. ممکن است برخی سایت‌ها آن را مسدود کنند یا کپچا بخواهند. برای جزئیات بزنید.", "Этот IP в официальном списке выходов Tor. Некоторые сайты могут блокировать его или просить капчу. Нажмите для деталей."),
         ["sc_tor_exit"] = ("Tor exit", "خروجی Tor", "Выход Tor"),
         ["sc_tor_exit_d"] = ("Is your exit address a Tor exit node? (official bulk exit list)", "آیا آدرس خروجی شما یک خروجی Tor است؟ (فهرست رسمی خروجی‌ها)", "Является ли ваш выход узлом Tor? (официальный список)"),
         ["sc_tor_exit_yes"] = ("Yes — your exit is a Tor exit node", "بله — خروجی شما یک گره خروجی Tor است", "Да — ваш выход является узлом Tor"),

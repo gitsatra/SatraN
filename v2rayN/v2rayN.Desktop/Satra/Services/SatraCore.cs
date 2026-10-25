@@ -399,9 +399,12 @@ public class SatraCore : ReactiveObject
         {
             var a = Active;
             if (a == null) return;
-            var r = await ExitProbe.LookupAsync(AppManager.Instance.GetLocalPort(EInboundProtocol.socks));
+            var port = AppManager.Instance.GetLocalPort(EInboundProtocol.socks);
+            var r = await ExitProbe.LookupAsync(port);
             if (r is { } v)
             {
+                // Tor exit badge on Home: cached list (6 h), refilled through the proxy only when stale
+                try { await TorExits.GetAsync(port, CancellationToken.None).WaitAsync(TimeSpan.FromSeconds(25)); } catch { }
                 lock (SatraState.I.Geo) SatraState.I.Geo[NetBadges.GeoKey(a)] = new ExitGeo { Cc = v.cc, Ip = v.ip, At = DateTimeOffset.UtcNow.ToUnixTimeSeconds() };
                 SatraState.Save();
                 Changed?.Invoke();

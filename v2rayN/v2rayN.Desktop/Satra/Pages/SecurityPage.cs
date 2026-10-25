@@ -60,6 +60,7 @@ public class SecurityPage : IPage
             var hdr = Ui.Row(Ui.H(8, Ui.T(CatIcon(cat), 13, FontWeight.Bold, P.Text2), Ui.Section(L.S("sc_cat_" + cat))), pts);
             hdr.Margin = new Thickness(4, 6, 4, 0);
             _body.Children.Add(hdr);
+            if (cat == "tor") _torHdr = hdr;
             var list = new StackPanel();
             var first = true;
             foreach (var r in _res.Where(r => r.Cat == cat))
@@ -82,7 +83,19 @@ public class SecurityPage : IPage
 
     private static string CatIcon(string c) => c switch { "leak" => "◎", "tls" => "⚿", "sys" => "⚙\uFE0E", _ => "⧗" };
 
-    public void Refresh() => PaintHeader();
+    public static bool FocusTor;
+    private Control? _torHdr;
+
+    public void Refresh()
+    {
+        PaintHeader();
+        if (FocusTor && _torHdr != null)
+        {
+            FocusTor = false;
+            var h = _torHdr;
+            Avalonia.Threading.DispatcherTimer.RunOnce(() => h.BringIntoView(), TimeSpan.FromMilliseconds(320));
+        }
+    }
 
     private void PaintHeader()
     {

@@ -461,7 +461,10 @@ public class HomePage : IPage
         var left = Ui.H(12, flag, Ui.V(3, Ui.T(Ui.CleanName(a.Remarks), 15.5, FontWeight.SemiBold), Ui.H(8, meta.ToArray())));
         var ip = SatraState.I.Geo.TryGetValue(NetBadges.GeoKey(a), out var g) ? g.Ip : "";
         if (SatraCore.I.Phase == ConnPhase.On && ip.Length > 0)
+        {
             meta.Add(Ui.Btn(Ui.Ltr(ip) + "  ⧉", Ui.Kind.Ghost, () => _ = SatraShell.I.Copy(ip), size: 11));
+            if (TorExits.IsKnownExit(ip)) meta.Add(TorBadge());
+        }
         var q = QuotaPill(a.Subid);
         if (q != null) meta.Add(q);
         // Fresh ContentControl each rebuild — reusing _homePing under a new parent crashes Avalonia.
@@ -469,6 +472,17 @@ public class HomePage : IPage
         var pingBtn = Ui.IconBtn("◎", () => _ = PingGuard.One(a), L.S("ping"), P.Text2, 15);
         var right = Ui.H(8, _homePing, pingBtn);
         return Ui.Row(left, right);
+    }
+
+    /// Calm badge: the exit IP is on the official Tor exit list → opens Security at the Tor section.
+    private static Control TorBadge()
+    {
+        var b = Ui.Pill("⧗  " + L.S("home_tor_exit"), P.Info, P.Fill, 10.5);
+        b.Cursor = new Cursor(StandardCursorType.Hand);
+        ToolTip.SetTip(b, L.S("home_tor_exit_tip"));
+        Avalonia.Automation.AutomationProperties.SetName(b, L.S("home_tor_exit"));
+        b.PointerReleased += (_, _) => { SecurityPage.FocusTor = true; SatraShell.I.Go("security"); };
+        return Ui.Pressable(b);
     }
 
     private Border SecurityButton()
