@@ -104,7 +104,7 @@ public static class SatraAppUpdate
             if (OperatingSystem.IsWindows())
             {
                 // Setup closes/replaces the app and starts the new one; quit so files aren't locked.
-                Process.Start(new ProcessStartInfo(path) { UseShellExecute = true, Verb = "runas" });
+                Process.Start(new ProcessStartInfo(path, "/S") { UseShellExecute = true, Verb = "runas" }); // NSIS silent upgrade, relaunches the app
                 await Quit();
                 return null;
             }

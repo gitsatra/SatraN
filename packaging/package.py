@@ -65,71 +65,27 @@ os.chmod(os.path.join(app, exe), 0o755)
 if rid.startswith("win"):
     # Admin install/uninstall helpers (TUN needs elevation on Windows)
     win_dir = os.path.join(os.path.dirname(__file__), "windows")
-    for name in ("Install-SatraN.ps1", "Uninstall-SatraN.ps1", "SatraN-Setup.cmd"):
+    for name in ("Install-SatraN.ps1", "Uninstall-SatraN.ps1"):
         src = os.path.join(win_dir, name)
         if os.path.exists(src):
             shutil.copy2(src, os.path.join(app, name))
             if name.endswith(".ps1"):
                 dst = os.path.join(app, name)
-                open(dst, "w", newline="\r\n").write(open(dst, encoding="utf-8-sig").read().replace("__VERSION__", ver))
+                txt = open(dst, encoding="utf-8-sig").read().replace("__VERSION__", ver)  # read BEFORE truncating
+                with open(dst, "w", newline="\r\n", encoding="utf-8-sig") as fh:
+                    fh.write(txt)
     zip_path = os.path.join(out, f"SatraN-{ver}-{rid}.zip")
     zipdir(app, zip_path, "SatraN")
     # SatraN-Setup: self-extracting archive when 7z is available; else a fat zip named like Setup.
     setup_zip = os.path.join(out, f"SatraN-Setup-{ver}.zip")
     shutil.copy2(zip_path, setup_zip)
 
-    # Always also emit a managed Setup.exe (downloads zip from GitHub if needed).
-    setup_proj = os.path.join(os.path.dirname(__file__), "windows", "SatraNSetup", "SatraNSetup.csproj")
-    if os.path.exists(setup_proj):
-        setup_out = os.path.join(work, "setup-pub")
-        prog = os.path.join(os.path.dirname(setup_proj), "Program.cs")
-        src_txt = open(prog).read()
-        open(prog, "w").write(re.sub(r'const string Version = "[^"]*";', f'const string Version = "{ver}";', src_txt))
-        subprocess.check_call(["dotnet", "publish", setup_proj, "-c", "Release", "-o", setup_out])
-        built = os.path.join(setup_out, "SatraN-Setup.exe")
-        if os.path.exists(built):
-            shutil.copy2(built, os.path.join(out, f"SatraN-Setup-{ver}.exe"))
-
-    seven = shutil.which("7z") or shutil.which("7za")
-    if seven:
-        sfx_dir = os.path.join(work, "sfx")
-        os.makedirs(sfx_dir, exist_ok=True)
-        # Flat copy for SFX so Install-SatraN.ps1 sits next to SatraN.exe
-        for root, _, files in os.walk(app):
-            for f in files:
-                src = os.path.join(root, f)
-                rel = os.path.relpath(src, app)
-                dst = os.path.join(sfx_dir, rel)
-                os.makedirs(os.path.dirname(dst), exist_ok=True)
-                shutil.copy2(src, dst)
-        setup_exe = os.path.join(out, f"SatraN-Setup-{ver}.exe")
-        # Prefer 7z's default SFX module if present; otherwise leave Setup.zip for the updater.
-        sfx = None
-        for cand in (
-            "/usr/lib/p7zip/7z.sfx",
-            "/usr/libexec/p7zip/7z.sfx",
-            os.path.join(os.path.dirname(seven), "7z.sfx"),
-        ):
-            if os.path.exists(cand):
-                sfx = cand
-                break
-        if sfx:
-            archive = os.path.join(work, "setup.7z")
-            subprocess.check_call([seven, "a", "-t7z", "-mx=7", archive, os.path.join(sfx_dir, "*")], cwd=sfx_dir)
-            with open(setup_exe, "wb") as out_f:
-                out_f.write(open(sfx, "rb").read())
-                out_f.write(open(archive, "rb").read())
-            # Config so SFX auto-runs the setup cmd after extract
-            cfg = os.path.join(work, "config.txt")
-            open(cfg, "w").write(
-                ";!@Install@!UTF-8!\nTitle=\"SatraN Setup\"\nRunProgram=\"SatraN-Setup.cmd\"\n;!@InstallEnd@!\n"
-            )
-            # Rebuild with config prepended (7z ConSfx)
-            with open(setup_exe, "wb") as out_f:
-                out_f.write(open(sfx, "rb").read())
-                out_f.write(open(cfg, "rb").read())
-                out_f.write(open(archive, "rb").read())
-            print("wrote", setup_exe)
+    # Standard wizard installer (NSIS): Next/Next/Install/Finish, Program Files, Helper service, full uninstaller.
+    nsi = os.path.join(os.path.dirname(__file__), "windows", "SatraN.nsi")
+    setup_exe = os.path.abspath(os.path.join(out, f"SatraN-Setup-{ver}.exe"))
+    subprocess.check_call(["makensis", "-V2", f"-DVERSION={ver}", f"-DSRC={os.path.abspath(app)}",
+                           f"-DOUTFILE={setup_exe}", nsi])
+    print("wrote", setup_exe)
 
 
 elif rid.startswith("linux"):

@@ -67,6 +67,9 @@ jobs:
             -o ../xray/$exe ./cmd/sing-box
           cd .. && ls -l xray/$exe
           bash packaging/fetch-srs.sh xray/srss
+      - name: NSIS (Windows installer)
+        if: matrix.rid == 'win-x64'
+        run: sudo apt-get update -q && sudo apt-get install -y -q nsis
       - name: Package
         run: python3 packaging/package.py ${{ matrix.rid }} pub xray ${{ steps.v.outputs.ver }} dist
       - uses: actions/upload-artifact@v4

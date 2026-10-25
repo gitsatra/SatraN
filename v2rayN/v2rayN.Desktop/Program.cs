@@ -18,6 +18,7 @@ internal class Program
             Environment.Exit(v2rayN.Desktop.Satra.Services.HelperHost.Run(args));
             return;
         }
+        WindowsUserData();
         if (OnStartup(args) == false)
         {
             Environment.Exit(0);
@@ -26,6 +27,35 @@ internal class Program
 
         BuildAvaloniaApp()
             .StartWithClassicDesktopLifetime(args);
+    }
+
+    /// <summary>Installed under Program Files (read-only for users): keep configs in %LOCALAPPDATA%\SatraN, migrating once from the old in-place data.</summary>
+    private static void WindowsUserData()
+    {
+        if (!OperatingSystem.IsWindows()) return;
+        try
+        {
+            var baseDir = AppContext.BaseDirectory.TrimEnd('\\', '/');
+            var pf = new[] { Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles), Environment.GetFolderPath(Environment.SpecialFolder.ProgramFilesX86) };
+            if (!pf.Any(p => p.Length > 0 && baseDir.StartsWith(p, StringComparison.OrdinalIgnoreCase))) return;
+            Environment.SetEnvironmentVariable(Global.LocalAppData, "1");
+            var data = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "SatraN");
+            if (Directory.Exists(Path.Combine(data, "guiConfigs"))) return;
+            foreach (var d in new[] { "guiConfigs", "guiBackups", "binConfigs", "rollback" })
+            {
+                var from = Path.Combine(baseDir, d);
+                foreach (var legacy in new[] { from, Path.Combine(baseDir, "legacy-data", d) })
+                    if (Directory.Exists(legacy)) { CopyDir(legacy, Path.Combine(data, d)); break; }
+            }
+        }
+        catch { }
+    }
+
+    private static void CopyDir(string from, string to)
+    {
+        Directory.CreateDirectory(to);
+        foreach (var f in Directory.GetFiles(from)) File.Copy(f, Path.Combine(to, Path.GetFileName(f)), true);
+        foreach (var d in Directory.GetDirectories(from)) CopyDir(d, Path.Combine(to, Path.GetFileName(d)));
     }
 
     public static FileStream? SingleLock;
