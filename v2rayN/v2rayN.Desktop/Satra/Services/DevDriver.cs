@@ -117,6 +117,15 @@ public static class DevDriver
                 break;
             case "dump": File.WriteAllLines(Path.Combine(dir, "servers.txt"), SatraCore.I.Profiles.ProfileItems.Select(p => $"{p.ConfigType} {p.Remarks} {p.Address}:{p.Port} {p.Network} {p.StreamSecurity}")); break;
             case "scat": SettingsPage.DevCat = arg; SatraShell.I.Go("settings"); break;
+            case "fetch":
+            {
+                var sw = System.Diagnostics.Stopwatch.StartNew();
+                string res;
+                try { var body = await UpdNet.GetStringAsync(arg); res = $"ok route={UpdNet.LastRoute} bytes={body.Length}"; }
+                catch (Exception ex) { res = "fail " + ex.Message; }
+                File.AppendAllText(Path.Combine(dir, "fetch.txt"), $"{DateTime.Now:HH:mm:ss} {arg} {res} {sw.ElapsedMilliseconds}ms\n");
+                break;
+            }
             case "upcheck": await AutoUpdater.RunAsync(true); break;
             case "upstate": File.AppendAllText(Path.Combine(dir, "up.txt"), $"{DateTime.Now:HH:mm:ss} {AutoUpdater.State} {AutoUpdater.Found?.Version} {AutoUpdater.Progress:0.00} {AutoUpdater.Error}\n"); break;
             case "click":

@@ -2,7 +2,7 @@ using System.Net;
 
 namespace v2rayN.Desktop.Satra.Services;
 
-/// <summary>HTTP for updates: try direct first, then through our own local proxy when connected (helps where the host is filtered).</summary>
+/// <summary>Smart downloader shared by app, Xray, sing-box and geo updates (see <see cref="Routes"/>).</summary>
 public static class UpdNet
 {
     public const string HubDl = "https://p.iivt.ir:2097/satra/dl/";
@@ -29,34 +29,80 @@ public static class UpdNet
         return c;
     }
 
-    private static IEnumerable<HttpClient> Clients()
+    /// <summary>Route used by the last successful request (QA/log): direct, proxy, proxy-temp, hub-ip.</summary>
+    public static string LastRoute { get; private set; } = "";
+
+    /// <summary>Test hook: SATRA_TEST_BLOCK_DIRECT=1 makes the direct route fail for this process only.</summary>
+    private static readonly bool BlockDirect = Environment.GetEnvironmentVariable("SATRA_TEST_BLOCK_DIRECT") == "1";
+
+    private static HttpClient ViaProxy(int port)
     {
-        if (SatraCore.I.Phase == ConnPhase.On)
-        {
-            var port = AppManager.Instance.GetLocalPort(EInboundProtocol.socks);
-            if (_viaProxy == null || _proxyPort != port)
-            {
-                _viaProxy = Make(new WebProxy($"socks5://127.0.0.1:{port}"));
-                _proxyPort = port;
-            }
-            yield return _viaProxy;
-        }
-        yield return Direct;
-        yield return Origin;
+        if (_viaProxy == null || _proxyPort != port) { _viaProxy = Make(new WebProxy($"socks5://127.0.0.1:{port}")); _proxyPort = port; }
+        return _viaProxy;
     }
+
+    /// <summary>
+    /// The smart route list, tried in order and invisible to the user:
+    /// 1) direct, 2) through a working config's local port (the running one, or a throw-away core started just for this),
+    /// 3) the Hub's origin IP (only for Hub URLs). GitHub mirrors are the callers' last fallback.
+    /// </summary>
+    private static async IAsyncEnumerable<(string route, HttpClient c)> Routes(string url, [System.Runtime.CompilerServices.EnumeratorCancellation] CancellationToken ct = default)
+    {
+        if (!BlockDirect) yield return ("direct", Direct);
+        if (SatraCore.I.Phase == ConnPhase.On)
+            yield return ("proxy", ViaProxy(AppManager.Instance.GetLocalPort(EInboundProtocol.socks)));
+        else
+        {
+            TempProxy? t = null;
+            try { t = await TempProxy.AcquireAsync(null, tryOthers: true, ct); } catch (OperationCanceledException) { throw; } catch { }
+            if (t != null)
+            {
+                try { yield return ("proxy-temp", Make(new WebProxy($"socks5://127.0.0.1:{t.Port}"))); }
+                finally { await t.DisposeAsync(); }
+            }
+        }
+        if (url.StartsWith(HubDl, StringComparison.Ordinal) || url.Contains("p.iivt.ir", StringComparison.Ordinal)) yield return ("hub-ip", Origin);
+    }
+
+    /// <summary>Hub copy of a GitHub release file (same bytes, same checksum), tried before GitHub itself.</summary>
+    public static string? HubMirror(string url)
+    {
+        const string gh = "https://github.com/";
+        if (!url.StartsWith(gh, StringComparison.Ordinal) || !url.Contains("/releases/", StringComparison.Ordinal)) return null;
+        return HubDl + "mirror/" + url[gh.Length..];
+    }
+
+    /// <summary>A 404 is an answer, not a blocked route: no point retrying it over other routes.</summary>
+    private static bool Missing(Exception ex) => ex is HttpRequestException { StatusCode: HttpStatusCode.NotFound };
+
+    private static string[] Candidates(string url) => HubMirror(url) is { } m ? [m, url] : [url];
 
     public static async Task<string> GetStringAsync(string url, CancellationToken ct = default)
     {
         Exception? last = null;
-        foreach (var c in Clients())
+        foreach (var u in Candidates(url))
+        {
+            try { return await GetStringOnceAsync(u, ct); }
+            catch (Exception ex) when (!ct.IsCancellationRequested) { last = ex; }
+        }
+        throw last ?? new HttpRequestException("unreachable");
+    }
+
+    private static async Task<string> GetStringOnceAsync(string url, CancellationToken ct)
+    {
+        Exception? last = null;
+        await foreach (var (route, c) in Routes(url, ct))
         {
             try
             {
                 using var cts = CancellationTokenSource.CreateLinkedTokenSource(ct);
-                cts.CancelAfter(TimeSpan.FromSeconds(20));
-                return await c.GetStringAsync(url, cts.Token);
+                cts.CancelAfter(TimeSpan.FromSeconds(route == "direct" ? 12 : 20));
+                var r = await c.GetStringAsync(url, cts.Token);
+                LastRoute = route;
+                Logging.SaveLog($"updnet {route} ok {url}");
+                return r;
             }
-            catch (Exception ex) when (!ct.IsCancellationRequested) { last = ex; }
+            catch (Exception ex) when (!ct.IsCancellationRequested && !Missing(ex)) { last = ex; Logging.SaveLog($"updnet {route} failed {url}: {ex.Message}"); }
         }
         throw last ?? new HttpRequestException("unreachable");
     }
@@ -65,7 +111,18 @@ public static class UpdNet
     public static async Task DownloadAsync(string url, string dest, string? sha256, IProgress<(long got, long? total)>? progress, CancellationToken ct = default)
     {
         Exception? last = null;
-        foreach (var c in Clients())
+        foreach (var u in Candidates(url))
+        {
+            try { await DownloadOnceAsync(u, dest, sha256, progress, ct); return; }
+            catch (Exception ex) when (!ct.IsCancellationRequested) { last = ex; }
+        }
+        throw last ?? new HttpRequestException("unreachable");
+    }
+
+    private static async Task DownloadOnceAsync(string url, string dest, string? sha256, IProgress<(long got, long? total)>? progress, CancellationToken ct)
+    {
+        Exception? last = null;
+        await foreach (var (route, c) in Routes(url, ct))
         {
             var part = dest + ".part";
             try
@@ -97,11 +154,14 @@ public static class UpdNet
                     if (!h.Equals(sha256, StringComparison.OrdinalIgnoreCase)) throw new InvalidDataException("checksum mismatch");
                 }
                 File.Move(part, dest, true);
+                LastRoute = route;
+                Logging.SaveLog($"updnet {route} ok {url}");
                 return;
             }
-            catch (Exception ex) when (!ct.IsCancellationRequested)
+            catch (Exception ex) when (!ct.IsCancellationRequested && !Missing(ex))
             {
                 last = ex;
+                Logging.SaveLog($"updnet {route} failed {url}: {ex.Message}");
                 try { File.Delete(part); } catch { }
             }
         }
