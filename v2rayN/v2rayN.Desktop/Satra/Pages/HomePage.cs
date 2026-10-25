@@ -265,7 +265,8 @@ public class HomePage : IPage
         var a = c.Active;
         _map.Show(c.Phase == ConnPhase.On && a != null ? NetBadges.ExitCc(a) : null);
         // Rebuild card when server / connect state / smart changes — not on every ping tick
-        var key = $"{a?.IndexId}|{c.Phase}|{(a != null ? NetBadges.ExitCc(a) : null)}|{SatraState.I.SmartConnect}|{L.Lang}";
+        var exitIp = a != null && SatraState.I.Geo.TryGetValue(NetBadges.GeoKey(a), out var eg) ? eg.Ip : "";
+        var key = $"{a?.IndexId}|{c.Phase}|{(a != null ? NetBadges.ExitCc(a) : null)}|{exitIp}|{TorExits.IsKnownExit(exitIp)}|{SatraState.I.SmartConnect}|{L.Lang}";
         if (key != _lastServerKey)
         {
             _lastServerKey = key;
@@ -458,15 +459,26 @@ public class HomePage : IPage
         var meta = new List<Control>();
         if (!string.IsNullOrEmpty(sub)) meta.Add(Ui.Caption(sub, P.Text3));
         if (SatraState.I.SmartConnect) meta.Add(Ui.Pill(L.S("smart"), P.Accent, P.AccentSoft, 10.5));
-        var left = Ui.H(12, flag, Ui.V(3, Ui.T(Ui.CleanName(a.Remarks), 15.5, FontWeight.SemiBold), Ui.H(8, meta.ToArray())));
         var ip = SatraState.I.Geo.TryGetValue(NetBadges.GeoKey(a), out var g) ? g.Ip : "";
         if (SatraCore.I.Phase == ConnPhase.On && ip.Length > 0)
         {
-            meta.Add(Ui.Btn(Ui.Ltr(ip) + "  ⧉", Ui.Kind.Ghost, () => _ = SatraShell.I.Copy(ip), size: 11));
+            {
+                var ipb = Ui.Pill(Ui.Ltr(ip) + "  ⧉", P.Text2, P.Fill, 10.5);
+                ipb.Cursor = new Cursor(StandardCursorType.Hand); ToolTip.SetTip(ipb, L.S("sc_ip"));
+                ipb.PointerReleased += (_, _) => _ = SatraShell.I.Copy(ip);
+                meta.Add(Ui.Pressable(ipb));
+            }
             if (TorExits.IsKnownExit(ip)) meta.Add(TorBadge());
         }
         var q = QuotaPill(a.Subid);
         if (q != null) meta.Add(q);
+        var metaRow = new WrapPanel { Orientation = Orientation.Horizontal };
+        foreach (var m in meta) { m.VerticalAlignment = VerticalAlignment.Center; m.Margin = new Thickness(0, 1, 8, 1); metaRow.Children.Add(m); }
+        var left = new Grid { ColumnDefinitions = new ColumnDefinitions("Auto,*") };
+        flag.VerticalAlignment = VerticalAlignment.Center;
+        var txt = Ui.V(3, Ui.T(Ui.CleanName(a.Remarks), 15.5, FontWeight.SemiBold), metaRow);
+        txt.Margin = new Thickness(12, 0, 0, 0); Grid.SetColumn(txt, 1);
+        left.Children.Add(flag); left.Children.Add(txt);
         // Fresh ContentControl each rebuild — reusing _homePing under a new parent crashes Avalonia.
         _homePing = new ContentControl { Content = ServersPage.PingPill(ServersPage.Delay(a), PingEngine.I.Get(a.IndexId).Status == PingStatus.Pending) };
         var pingBtn = Ui.IconBtn("◎", () => _ = PingGuard.One(a), L.S("ping"), P.Text2, 15);

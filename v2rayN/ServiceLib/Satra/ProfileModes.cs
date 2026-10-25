@@ -44,11 +44,11 @@ public static class ProfileModes
     /// <summary>Colour identity (dark-theme friendly, Apple system palette) and emoji per mode (MODES-SPEC.md).</summary>
     public static string Color(string mode) => Normalize(mode) switch
     {
-        Game => "#BF5AF2", Secure => "#0A84FF", Fortress => "#FF453A", Stream => "#FF375F", Eco => "#30D158", _ => "#8E9BB0",
+        Game => "#BF5AF2", Secure => "#0A84FF", Fortress => "#FF453A", Stream => "#FF375F", Eco => "#30D158", _ => "#8E8E93",
     };
     public static string Emoji(string mode) => Normalize(mode) switch
     {
-        Game => "🎮", Secure => "🛡️", Fortress => "🏰", Stream => "🎬", Eco => "🌿", _ => "🌐",
+        Game => "🎮", Secure => "🛡️", Fortress => "🏰", Stream => "🎬", Eco => "🍃", _ => "🌐",
     };
 
     public enum Act { On, Off, Set }
