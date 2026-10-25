@@ -99,7 +99,7 @@ public static class TunHelper
         {
             if (OperatingSystem.IsWindows())
             {
-                var p = new NamedPipeClientStream(".", PipeName, PipeDirection.InOut);
+                var p = new NamedPipeClientStream(".", PipeName, PipeDirection.InOut, PipeOptions.Asynchronous); // async: a pending read must never block the stop write (Windows sync-handle I/O is serialized)
                 p.Connect(timeoutMs);
                 return p;
             }
@@ -141,6 +141,7 @@ public static class TunHelper
     {
         await StopAsync();
         var gen = Volatile.Read(ref _gen);
+        Logging.SaveLog($"TunHelper: start requested (gen {gen})");
         var s = Connect(1000);
         if (s == null) return (false, "helper unavailable");
         var rd = new StreamReader(s, leaveOpen: true);
@@ -155,9 +156,11 @@ public static class TunHelper
                     // never leave a tunnel running with no core behind it.
                     try { await s.WriteAsync(System.Text.Encoding.UTF8.GetBytes("{\"op\":\"stop\"}\n")); await s.FlushAsync(); await rd.ReadLineAsync().WaitAsync(TimeSpan.FromSeconds(6)); } catch { }
                     s.Dispose();
+                    Logging.SaveLog("TunHelper: start came up after cancel -> stopped");
                     return (false, "cancelled");
                 }
                 _session = s; _rd = rd;
+                Logging.SaveLog("TunHelper: session open");
                 _monitor = Task.Run(async () =>
                 {
                     try { while (await rd.ReadLineAsync() is { } l && !l.Contains("\"ok\"")) { } } catch { }
@@ -186,14 +189,17 @@ public static class TunHelper
         var s = _session; var m = _monitor;
         _session = null; _rd = null;
         if (s == null) return;
+        Logging.SaveLog("TunHelper: stop");
         try
         {
-            await s.WriteAsync(System.Text.Encoding.UTF8.GetBytes("{\"op\":\"stop\"}\n"));
-            await s.FlushAsync();
+            // bounded: if the stop cannot be delivered, closing the pipe below makes the helper tear down anyway
+            using var cts = new CancellationTokenSource(3000);
+            await s.WriteAsync(System.Text.Encoding.UTF8.GetBytes("{\"op\":\"stop\"}\n"), cts.Token);
+            await s.FlushAsync(cts.Token);
             if (m != null) await Task.WhenAny(m, Task.Delay(6000));
         }
-        catch { }
-        s.Dispose();
+        catch (Exception ex) { Logging.SaveLog("TunHelper: stop not delivered, closing session: " + ex.Message); }
+        try { s.Dispose(); } catch { }
     }
 
     /// <summary>Connectivity check used for auto-rollback: any generate_204 answering 204 within the deadline.</summary>
@@ -328,10 +334,13 @@ public static class TunHelper
             if (!OperatingSystem.IsWindows()) File.SetUnixFileMode(cfg, UnixFileMode.UserRead | UnixFileMode.UserWrite);
             var psi = new ProcessStartInfo(CoreExe) { WorkingDirectory = RunDir, UseShellExecute = false, RedirectStandardOutput = true, RedirectStandardError = true, CreateNoWindow = true };
             foreach (var a in new[] { "run", "-c", cfg, "-D", RunDir, "--disable-color" }) psi.ArgumentList.Add(a);
-            var log = new StreamWriter(LogPath, false) { AutoFlush = true };
+            try { _log?.Dispose(); } catch { }
+            // shared + owned: a previous session's writer must never block the next start (Windows sharing violation)
+            var log = new StreamWriter(new FileStream(LogPath, FileMode.Create, FileAccess.Write, FileShare.ReadWrite | FileShare.Delete)) { AutoFlush = true };
+            _log = log;
             var p = Process.Start(psi)!;
-            p.OutputDataReceived += (_, e) => { if (e.Data != null) lock (log) log.WriteLine(e.Data); };
-            p.ErrorDataReceived += (_, e) => { if (e.Data != null) lock (log) log.WriteLine(e.Data); };
+            p.OutputDataReceived += (_, e) => { if (e.Data != null) lock (log) { try { log.WriteLine(e.Data); } catch { } } };
+            p.ErrorDataReceived += (_, e) => { if (e.Data != null) lock (log) { try { log.WriteLine(e.Data); } catch { } } };
             p.BeginOutputReadLine(); p.BeginErrorReadLine();
             _core = p;
             p.EnableRaisingEvents = true;
@@ -363,8 +372,17 @@ public static class TunHelper
 
     private static string Tail()
     {
-        try { var l = File.ReadAllLines(LogPath); return string.Join(" | ", l.TakeLast(3)); } catch { return ""; }
+        try
+        {
+            using var fs = new FileStream(LogPath, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete);
+            using var r = new StreamReader(fs);
+            var l = r.ReadToEnd().Split('\n', StringSplitOptions.RemoveEmptyEntries);
+            return string.Join(" | ", l.TakeLast(3)).Trim();
+        }
+        catch { return ""; }
     }
+
+    private static StreamWriter? _log;
 
     private static async Task StopCore() { await Gate.WaitAsync(); try { await StopCoreLocked(); } finally { Gate.Release(); } }
 
@@ -388,6 +406,8 @@ public static class TunHelper
             catch { }
             p.Dispose();
         }
+        var lg = _log; _log = null;
+        if (lg != null) { try { lock (lg) lg.Dispose(); } catch { } }
         Cleanup();
     }
 

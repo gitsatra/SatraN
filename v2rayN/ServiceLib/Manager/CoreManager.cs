@@ -124,6 +124,7 @@ public class CoreManager
             await CoreStop();
             return;
         }
+        Logging.SaveLog($"LoadCore: tun={mainContext.IsTunEnabled}/{preContext?.IsTunEnabled} node={node.Remarks}");
         await UpdateFunc(false, $"{node.GetSummary()}");
         await UpdateFunc(false, $"{Utils.GetRuntimeInfo()}");
         await UpdateFunc(false, string.Format(ResUI.StartService, DateTime.Now.ToString("yyyy/MM/dd HH:mm:ss")));
@@ -255,7 +256,10 @@ public class CoreManager
                 // Satra: privileged helper (installed once, like OpenVPN) -> no password/UAC on connect.
                 if (preContext.IsTunEnabled && preCoreType == ECoreType.sing_box && await ServiceLib.Satra.TunHelper.AvailableAsync())
                 {
+                    // switched off before the helper was even asked: never bring a tunnel up behind the user's back
+                    if (StartGate?.Invoke() == false || _processService is not { HasExited: false }) { await UpdateFunc(false, "TUN start cancelled"); return; }
                     var (ok, err) = await ServiceLib.Satra.TunHelper.StartAsync(await File.ReadAllTextAsync(fileName));
+                    if (!ok && StartGate?.Invoke() == false) err = "cancelled"; // failure after Off is not a user-facing error
                     if (ok && (StartGate?.Invoke() == false || _processService is not { HasExited: false }))
                     {
                         // switched off / core died during the start: tear the tunnel down again

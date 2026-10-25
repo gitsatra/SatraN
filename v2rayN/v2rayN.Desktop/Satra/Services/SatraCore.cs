@@ -40,7 +40,7 @@ public class SatraCore : ReactiveObject
         // Ping/speed rows update themselves via SpeedTestUpdated; do not RaiseChanged (that rebuilds pages).
         CoreConfigHandler.MuxPref = n => SatraState.I.Mux.TryGetValue(Pages.ServersPage.Key(n), out var v) ? v : null;
         CoreManager.StartGate = () => Phase is ConnPhase.Connecting or ConnPhase.On;
-        CoreManager.TunFailed = e => Avalonia.Threading.Dispatcher.UIThread.Post(async () => { Logging.SaveLog("TUN failed -> disconnect (network left intact): " + e); await DisconnectAsync(); Toast?.Invoke(L.S("tun_failed")); Set(ConnPhase.Failed); });
+        CoreManager.TunFailed = e => Avalonia.Threading.Dispatcher.UIThread.Post(async () => { Logging.SaveLog("TUN failed -> disconnect (network left intact): " + e); if (Phase is not (ConnPhase.Connecting or ConnPhase.On)) return; await DisconnectAsync(); Toast?.Invoke(L.S("tun_failed")); Set(ConnPhase.Failed); });
         ServiceLib.Satra.TunHelper.SessionLost = () => Avalonia.Threading.Dispatcher.UIThread.Post(async () => { if (Phase != ConnPhase.On) return; Logging.SaveLog("TUN helper session lost -> reconnect"); await DisconnectAsync(); await Task.Delay(2500); await ConnectAsync(); });
         try { foreach (var f in Directory.EnumerateFiles(Utils.GetBinConfigPath(), "configTest*.json")) if (File.GetLastWriteTimeUtc(f) < DateTime.UtcNow.AddMinutes(-10)) File.Delete(f); } catch { }
         DispatcherTimer.Run(() => { Tick(); return true; }, TimeSpan.FromSeconds(1));
@@ -59,6 +59,9 @@ public class SatraCore : ReactiveObject
             });
         }
         DispatcherTimer.RunOnce(() => _ = AutoUpdateSubsAsync(true), TimeSpan.FromSeconds(4));
+#if SATRA_TESTCTL
+        TestCtl.Install(this);
+#endif
     }
 
     public bool IsRouted => Cfg.SystemProxyItem.SysProxyType == ESysProxyType.ForcedChange || Cfg.TunModeItem.EnableTun || (SatraState.I.Mode == "socks" && _socksOn);
@@ -88,6 +91,7 @@ public class SatraCore : ReactiveObject
 
     private void Set(ConnPhase p)
     {
+        if (Phase != p) Logging.SaveLog($"Satra phase {Phase} -> {p} (mode {SatraState.I.Mode})");
         Phase = p;
         Changed?.Invoke();
     }
@@ -174,12 +178,14 @@ public class SatraCore : ReactiveObject
             Toast?.Invoke(L.S("no_server"));
             return;
         }
+        var gen = ++_connGen;
         Set(ConnPhase.Connecting);
         try
         {
             if (SatraState.I.SmartConnect && Profiles.ProfileItems.Count > 1)
             {
                 await SmartPickAsync(quiet: true);
+                if (gen != _connGen) return; // Off pressed while picking
             }
             // Mutually exclusive modes: real VPN (TUN) vs system proxy vs listen-only proxy
             switch (SatraState.I.Mode)
@@ -199,6 +205,8 @@ public class SatraCore : ReactiveObject
                         Set(ConnPhase.Failed);
                         return;
                     }
+                    // Off pressed while TUN was being enabled: undo, so no stale TUN flag survives
+                    if (gen != _connGen) { await Status.ApplyTunModeAsync(false); return; }
                     break;
                 case "socks":
                     if (Cfg.TunModeItem.EnableTun) await Status.ApplyTunModeAsync(false);
@@ -216,7 +224,9 @@ public class SatraCore : ReactiveObject
             for (var i = 0; i < waitMs; i++)
             {
                 await Task.Delay(200);
-                if (i == 4 && !CoreManager.Instance.CoreRunning) await Main.Reload();
+                if (gen != _connGen) return; // user pressed Off meanwhile: never reload/re-enable behind their back
+                // TUN start (helper + connectivity check) takes seconds; an early second reload would restart it mid-way
+                if (i == (SatraState.I.Mode == "tun" ? 50 : 4) && !CoreManager.Instance.CoreRunning) await Main.Reload();
                 engaged = SatraState.I.Mode switch
                 {
                     "tun" => Cfg.TunModeItem.EnableTun && CoreManager.Instance.CoreRunning && CoreManager.Instance.TunRunning && TunIfaceUp(),
@@ -227,6 +237,7 @@ public class SatraCore : ReactiveObject
             }
             // TUN: iface+core is the contract. Google generate_204 often times out under
             // auto_route DNS race and must not tear down a working tunnel.
+            if (gen != _connGen) return;
             AvailabilityCheckResult? r = null;
             bool ok;
             if (SatraState.I.Mode == "tun")
@@ -247,6 +258,7 @@ public class SatraCore : ReactiveObject
                 r = engaged ? await Status.TestServerAvailability() : null;
                 ok = engaged && r is { Time: > 0 };
             }
+            if (gen != _connGen) return; // cancelled during the availability test: DisconnectAsync owns cleanup
             if (ok)
             {
                 SessionUp = SessionDown = 0;
@@ -295,8 +307,13 @@ public class SatraCore : ReactiveObject
         await ConnectAsync();
     }
 
+    private int _connGen;
+    /// <summary>True while connect attempt <paramref name="gen"/> is still the current one (not cancelled by Off).</summary>
+    internal bool IsCurrentConnect(int gen) => gen == _connGen;
+
     public async Task DisconnectAsync()
     {
+        _connGen++;
         Set(ConnPhase.Disconnecting);
         _socksOn = false;
         if (Cfg.TunModeItem.EnableTun) await Status.ApplyTunModeAsync(false);
