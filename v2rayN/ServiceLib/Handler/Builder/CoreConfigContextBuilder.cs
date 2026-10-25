@@ -39,7 +39,7 @@ public class CoreConfigContextBuilder
         // (OpenVPN/Outline model = setcap NET_ADMIN only). Use sing-box end-to-end for TUN.
         if (config.TunModeItem.EnableTun
             && runCoreType is not (ECoreType.sing_box or ECoreType.mihomo)
-            && (Utils.IsLinux() || !config.TunModeItem.EnableLegacyProtect))
+            && !config.TunModeItem.EnableLegacyProtect)
         {
             runCoreType = ECoreType.sing_box;
         }
@@ -175,6 +175,10 @@ public class CoreConfigContextBuilder
                 ProtectDomainList = [.. mainResult.Context.ProtectDomainList, .. preResult.Context.ProtectDomainList],
             },
         };
+        if (mainResult.Context.IsTunEnabled && Utils.IsLinux())
+        {
+            resolvedMainResult = resolvedMainResult with { Context = resolvedMainResult.Context with { XrayBindInterface = Utils.GetDefaultInterface() } };
+        }
         if (mainResult.Context.IsTunEnabled
             && mainResult.Context.AppConfig.TunModeItem.StrictRoute)
         {

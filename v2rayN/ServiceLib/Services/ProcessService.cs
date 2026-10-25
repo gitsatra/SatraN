@@ -93,9 +93,22 @@ public class ProcessService : IDisposable
                 catch { }
             }
 
+            // Satra: graceful SIGTERM first so sing-box removes its TUN ip rules/routes/DNS (SIGKILL leaves them behind).
+            if (Utils.IsNonWindows())
+            {
+                try
+                {
+                    if (!_process.HasExited && kill(_process.Id, 15) == 0)
+                    {
+                        for (var i = 0; i < 30 && !_process.HasExited; i++) await Task.Delay(100);
+                    }
+                }
+                catch { }
+            }
+
             try
             {
-                if (Utils.IsNonWindows())
+                if (Utils.IsNonWindows() && !_process.HasExited)
                 {
                     _process.Kill(true);
                 }
@@ -177,4 +190,7 @@ public class ProcessService : IDisposable
         _isDisposed = true;
         GC.SuppressFinalize(this);
     }
+
+    [System.Runtime.InteropServices.DllImport("libc", SetLastError = true)]
+    private static extern int kill(int pid, int sig);
 }

@@ -73,6 +73,16 @@ public partial class CoreConfigV2rayService(CoreConfigContext context)
 
             ret.Msg = string.Format(ResUI.SuccessfulConfiguration, "");
             ret.Success = true;
+            if (!string.IsNullOrEmpty(context.XrayBindInterface))
+            {
+                foreach (var ob in _coreConfig.outbounds)
+                {
+                    if (ob.protocol is "blackhole" or "loopback" || !string.IsNullOrEmpty(ob.streamSettings?.sockopt?.dialerProxy)) continue;
+                    ob.streamSettings ??= new();
+                    ob.streamSettings.sockopt ??= new();
+                    ob.streamSettings.sockopt.Interface = context.XrayBindInterface;
+                }
+            }
             ret.Data = ApplyFinalConfigModifiers();
             return ret;
         }

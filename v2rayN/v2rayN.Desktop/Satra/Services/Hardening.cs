@@ -38,9 +38,9 @@ public static class Hardening
                 cfg.TunModeItem.AutoRoute = true;
                 cfg.TunModeItem.StrictRoute = true;
                 cfg.TunModeItem.EnableIPv6Address = true;
-                // Xray+sing-box LegacyProtect needs process_path match (CAP_SYS_PTRACE). Satra uses
-                // setcap NET_ADMIN only — force sing-box for TUN instead.
-                cfg.TunModeItem.EnableLegacyProtect = false;
+                // TUN = sing-box TUN front + the node's own core (xray) behind it, so every config that works
+                // in proxy mode also works in VPN mode (sing-box alone fails e.g. some REALITY servers).
+                cfg.TunModeItem.EnableLegacyProtect = true;
                 // Measured in a netns (vless, loopback): mixed/9000 ≈ 1.6 GB/s vs 1500 ≈ 0.33 GB/s, gvisor ≈ 0.9 GB/s.
                 cfg.TunModeItem.Stack = "mixed";
                 if (cfg.TunModeItem.Mtu is <= 1500) cfg.TunModeItem.Mtu = 9000;
@@ -58,11 +58,10 @@ public static class Hardening
         }
         // Keep Mode defaulted to tun if somehow empty
         if (string.IsNullOrEmpty(st.Mode)) { st.Mode = "tun"; SatraState.Save(); }
-        // Always enforce: LegacyProtect is Xray+sing-box with process_path bypass. Satra uses
-        // sing-box end-to-end for TUN (Linux setcap / Windows wintun) — never the dual-core path.
-        if (cfg.TunModeItem.EnableLegacyProtect)
+        // Always enforce the dual-core TUN chain (Linux: xray bound to the physical NIC; Windows: process_path bypass).
+        if (!cfg.TunModeItem.EnableLegacyProtect)
         {
-            cfg.TunModeItem.EnableLegacyProtect = false;
+            cfg.TunModeItem.EnableLegacyProtect = true;
             _ = ConfigHandler.SaveConfig(cfg);
         }
         foreach (var f in new[] { "guiNConfig.json", "guiNDB.db", "satra.json" }) SecureStore.Restrict(Utils.GetConfigPath(f));

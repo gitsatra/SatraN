@@ -1322,6 +1322,21 @@ public class Utils
     [SupportedOSPlatformGuard("linux")]
     public static bool IsLinux() => OperatingSystem.IsLinux();
 
+    /// <summary>Linux: interface of the lowest-metric IPv4 default route, ignoring TUN devices (null if none).</summary>
+    public static string? GetDefaultInterface()
+    {
+        try
+        {
+            if (!OperatingSystem.IsLinux()) return null;
+            return File.ReadAllLines("/proc/net/route").Skip(1)
+                .Select(l => l.Split('\t', StringSplitOptions.RemoveEmptyEntries))
+                .Where(f => f.Length > 7 && f[1] == "00000000" && f[7] == "00000000" && !f[0].Contains("tun") && f[0] != "lo")
+                .OrderBy(f => int.TryParse(f[6], out var m) ? m : int.MaxValue)
+                .Select(f => f[0]).FirstOrDefault();
+        }
+        catch { return null; }
+    }
+
     [SupportedOSPlatformGuard("macos")]
     public static bool IsMacOS() => OperatingSystem.IsMacOS();
 
