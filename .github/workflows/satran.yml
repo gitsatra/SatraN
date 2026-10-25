@@ -51,6 +51,21 @@ jobs:
           curl -fsSL -o sb.$ext https://github.com/SagerNet/sing-box/releases/download/v${SINGBOX_VERSION}/sing-box-${SINGBOX_VERSION}-$sb.$ext
           mkdir sb && if [ $ext = zip ]; then unzip -q sb.zip -d sb; else tar -xzf sb.tar.gz -C sb; fi
           find sb -type f \( -name 'sing-box*' -o -name 'wintun.dll' \) -exec cp {} xray/ \;
+      - uses: actions/setup-go@v5
+        with:
+          go-version: 'stable'
+          cache: false
+      - name: Trimmed sing-box (TUN + client protocols only; ~45MB instead of ~80MB)
+        run: |
+          case "${{ matrix.rid }}" in
+            win-x64) os=windows; arch=amd64; exe=sing-box.exe;; linux-x64) os=linux; arch=amd64; exe=sing-box;; osx-x64) os=darwin; arch=amd64; exe=sing-box;; osx-arm64) os=darwin; arch=arm64; exe=sing-box;;
+          esac
+          git clone -q --depth 1 -b v${SINGBOX_VERSION} https://github.com/SagerNet/sing-box sbsrc
+          cd sbsrc && CGO_ENABLED=0 GOOS=$os GOARCH=$arch go build -trimpath \
+            -ldflags "-s -w -buildid= -checklinkname=0 -X github.com/sagernet/sing-box/constant.Version=${SINGBOX_VERSION}" \
+            -tags with_gvisor,with_quic,with_wireguard,with_utls,with_clash_api,with_naive_outbound,with_purego,badlinkname,tfogo_checklinkname0 \
+            -o ../xray/$exe ./cmd/sing-box
+          cd .. && ls -l xray/$exe
           bash packaging/fetch-srs.sh xray/srss
       - name: Package
         run: python3 packaging/package.py ${{ matrix.rid }} pub xray ${{ steps.v.outputs.ver }} dist

@@ -94,7 +94,13 @@ public static class SatraAppUpdate
                 await tar.WaitForExitAsync();
                 if (tar.ExitCode != 0 || !File.Exists(Path.Combine(stage, "SatraN"))) return "extract failed";
                 // swap after we exit: a tiny shell script waits for our pid
-                var sh = $"while kill -0 {Environment.ProcessId} 2>/dev/null; do sleep 0.3; done; rm -rf '{baseDir}.old'; mv '{baseDir}' '{baseDir}.old' && mv '{stage}' '{baseDir}' && rm -rf '{baseDir}.old'; setsid '{baseDir}/SatraN' >/dev/null 2>&1 &";
+                // portable keeps user data (guiConfigs, binConfigs, state, rollback…) inside baseDir:
+                // carry over every top-level entry the new package doesn't ship before swapping
+                var sh = $"while kill -0 {Environment.ProcessId} 2>/dev/null; do sleep 0.3; done; "
+                    + $"for e in '{baseDir}'/* '{baseDir}'/.[!.]*; do [ -e \"$e\" ] || continue; n=$(basename \"$e\"); "
+                    + $"[ -e '{stage}'/\"$n\" ] || mv \"$e\" '{stage}'/; done; "
+                    + $"rm -rf '{baseDir}.old'; mv '{baseDir}' '{baseDir}.old' && mv '{stage}' '{baseDir}' && rm -rf '{baseDir}.old'; "
+                    + $"setsid '{baseDir}/SatraN' >/dev/null 2>&1 &";
                 Process.Start(new ProcessStartInfo("sh", ["-c", sh]) { UseShellExecute = false });
                 await Quit();
                 return null;
