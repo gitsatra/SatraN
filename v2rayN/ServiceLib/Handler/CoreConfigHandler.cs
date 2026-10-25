@@ -10,6 +10,9 @@ public static class CoreConfigHandler
 
     private static readonly string _tag = "CoreConfigHandler";
 
+    /// <summary>Satra: never hand Xray a geo code its .dat files do not contain (Xray would refuse to start).</summary>
+    private static string Xr(string json, ECoreType t) => t == ECoreType.sing_box ? json : ServiceLib.Satra.GeoSanitizer.SanitizeXray(json);
+
     public static async Task<RetResult> GenerateClientConfig(CoreConfigContext context, string? fileName)
     {
         var config = AppManager.Instance.Config;
@@ -38,7 +41,7 @@ public static class CoreConfigHandler
         }
         if (fileName.IsNotEmpty() && result.Data != null)
         {
-            await File.WriteAllTextAsync(fileName, result.Data.ToString());
+            await File.WriteAllTextAsync(fileName, Xr(result.Data.ToString()!, context.RunCoreType));
         }
 
         return result;
@@ -124,7 +127,7 @@ public static class CoreConfigHandler
         {
             return result;
         }
-        await File.WriteAllTextAsync(fileName, result.Data.ToString());
+        await File.WriteAllTextAsync(fileName, Xr(result.Data.ToString()!, coreType));
         return result;
     }
 
@@ -148,7 +151,7 @@ public static class CoreConfigHandler
             return result;
         }
 
-        await File.WriteAllTextAsync(fileName, result.Data.ToString());
+        await File.WriteAllTextAsync(fileName, Xr(result.Data.ToString()!, context.RunCoreType));
         return result;
     }
 }
