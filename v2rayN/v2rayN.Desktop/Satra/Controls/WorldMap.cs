@@ -94,16 +94,11 @@ public class WorldMap : Control
         var o = Avoid.TranslatePoint(new Point(0, 0), this);
         var bt = Band.TranslatePoint(new Point(0, 0), this);
         if (o is not { } op || bt is not { } bp) return null;
-        const double gap = 28, edge = 20;
-        double top = bp.Y, h = Band.Bounds.Height;
-        var left = new Rect(edge, top, Math.Max(0, op.X - gap - edge), h);
-        var rightX = op.X + Avoid.Bounds.Width + gap;
-        var right = new Rect(rightX, top, Math.Max(0, W - edge - rightX), h);
-        var r = right.Width >= left.Width ? right : left;
-        if (r.Width < 150 || r.Height < 60) return null;
-        // keep the map a calm accent, not a wall: cap its width
-        if (r.Width > 520) r = new Rect(r.X + (r.Width - 520) / 2, r.Y, 520, r.Height);
-        return r;
+        // Right side only: from just right of the connect button to the page's right edge.
+        const double gap = 36, edge = 24;
+        var x = op.X + Avoid.Bounds.Width + gap;
+        var r = new Rect(x, bp.Y, Math.Max(0, W - edge - x), Band.Bounds.Height);
+        return r.Width < 140 || r.Height < 60 ? null : r;
     }
 
     public override void Render(DrawingContext dc)
@@ -118,11 +113,17 @@ public class WorldMap : Control
         var box = FreeBox(W, H);
         if (box is not { } fb) return;
         var s = Math.Min(fb.Width / mw, fb.Height / mh);
-        var tx = fb.X + (fb.Width - mw * s) / 2;
+        var tx = fb.Right - mw * s; // hug the right edge
         var ty = fb.Y + (fb.Height - mh * s) / 2;
         var dark = (P.Bg.R + P.Bg.G + P.Bg.B) < 384;
         var ink = dark ? Colors.White : Colors.Black;
-        var land = new SolidColorBrush(ink, dark ? 0.045 : 0.04);
+        var land = new SolidColorBrush(ink, dark ? 0.06 : 0.07);
+        var fade = new LinearGradientBrush
+        {
+            StartPoint = new RelativePoint(tx, 0, RelativeUnit.Absolute), EndPoint = new RelativePoint(tx + mw * s * 0.35, 0, RelativeUnit.Absolute),
+            GradientStops = { new GradientStop(Color.FromArgb(0, 0, 0, 0), 0), new GradientStop(Colors.Black, 1) }
+        };
+        using (dc.PushOpacityMask(fade, new Rect(tx, ty, mw * s, mh * s)))
         using (dc.PushTransform(Matrix.CreateScale(s, s) * Matrix.CreateTranslation(tx, ty)))
             dc.DrawGeometry(land, null, geo);
         var d = _dot;
