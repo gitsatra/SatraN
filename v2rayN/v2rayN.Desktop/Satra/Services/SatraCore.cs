@@ -41,6 +41,7 @@ public class SatraCore : ReactiveObject
         CoreManager.StartGate = () => Phase is ConnPhase.Connecting or ConnPhase.On;
         CoreManager.TunFailed = _ => Avalonia.Threading.Dispatcher.UIThread.Post(async () => { Logging.SaveLog("TUN failed -> disconnect (network left intact)"); await DisconnectAsync(); });
         ServiceLib.Satra.TunHelper.SessionLost = () => Avalonia.Threading.Dispatcher.UIThread.Post(async () => { if (Phase != ConnPhase.On) return; Logging.SaveLog("TUN helper session lost -> reconnect"); await DisconnectAsync(); await Task.Delay(2500); await ConnectAsync(); });
+        try { foreach (var f in Directory.EnumerateFiles(Utils.GetBinConfigPath(), "configTest*.json")) if (File.GetLastWriteTimeUtc(f) < DateTime.UtcNow.AddMinutes(-10)) File.Delete(f); } catch { }
         DispatcherTimer.Run(() => { Tick(); return true; }, TimeSpan.FromSeconds(1));
         DispatcherTimer.Run(() => { _ = AutoUpdateSubsAsync(); return true; }, TimeSpan.FromMinutes(15));
         SubFallback.Install();
