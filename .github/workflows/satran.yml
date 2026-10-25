@@ -72,7 +72,7 @@ jobs:
         run: sudo apt-get update -q && sudo apt-get install -y -q nsis
       - name: Package
         run: python3 packaging/package.py ${{ matrix.rid }} pub xray ${{ steps.v.outputs.ver }} dist
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: SatraN-${{ matrix.rid }}
           path: dist/*
