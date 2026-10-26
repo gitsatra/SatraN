@@ -64,7 +64,7 @@ public static class UpdNet
         if (url.StartsWith(HubDl, StringComparison.Ordinal) || url.Contains("p.iivt.ir", StringComparison.Ordinal)) yield return ("hub-ip", Origin);
     }
 
-    /// <summary>Hub copy of a GitHub release file (same bytes, same checksum), tried before GitHub itself.</summary>
+    /// <summary>Hub copy of a GitHub release file (same bytes, same checksum), tried after GitHub.</summary>
     public static string? HubMirror(string url)
     {
         const string gh = "https://github.com/";
@@ -75,7 +75,8 @@ public static class UpdNet
     /// <summary>A 404 is an answer, not a blocked route: no point retrying it over other routes.</summary>
     private static bool Missing(Exception ex) => ex is HttpRequestException { StatusCode: HttpStatusCode.NotFound };
 
-    private static string[] Candidates(string url) => HubMirror(url) is { } m ? [m, url] : [url];
+    // GitHub first; the Hub mirror is only a fallback (the Hub may be gone).
+    private static string[] Candidates(string url) => HubMirror(url) is { } m ? [url, m] : [url];
 
     public static async Task<string> GetStringAsync(string url, CancellationToken ct = default)
     {

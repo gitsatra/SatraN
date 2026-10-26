@@ -133,13 +133,9 @@ elif rid.startswith("linux"):
     os.makedirs(os.path.join(root, "etc/apt/sources.list.d"), exist_ok=True)
     with open(os.path.join(root, "etc/apt/sources.list.d/satran.list"), "w") as f:
         f.write(
-            "# SatraN updates (signed). Remove this file to stop apt updates for SatraN.\n"
-            "# Satra Hub origin IP: the hostname's CDN front does not carry port 2097. Chain is verified; packages are GPG-signed.\n"
-            "deb [arch=amd64 signed-by=/usr/share/keyrings/satran-archive.gpg] https://107.189.24.195:2097/satra/dl/apt stable main\n"
+            "# SatraN updates (signed, GitHub Pages)\n"
+            "deb [arch=amd64 signed-by=/usr/share/keyrings/satran-archive.gpg] https://gitsatra.github.io/SatraN/apt stable main\n"
         )
-    os.makedirs(os.path.join(root, "etc/apt/apt.conf.d"), exist_ok=True)
-    with open(os.path.join(root, "etc/apt/apt.conf.d/99satran"), "w") as f:
-        f.write('// SatraN apt repo is reached by IP; its certificate is for the Hub domain\nAcquire::https::107.189.24.195::Verify-Host "false";\n')
     # Privileged TUN helper (systemd, root): connect never asks for a password
     os.makedirs(os.path.join(root, "lib/systemd/system"), exist_ok=True)
     shutil.copy2(os.path.join(os.path.dirname(__file__), "satran-helper.service"), os.path.join(root, "lib/systemd/system/satran-helper.service"))

@@ -23,5 +23,8 @@ for f in sorted(os.listdir(os.path.join(m, v))):
     files[f] = {"url": f"{v}/{f}", "size": os.path.getsize(p), "sha256": hashlib.sha256(open(p, "rb").read()).hexdigest()}
 json.dump({"version": v, "date": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()), "files": files}, open(os.path.join(m, "latest.json"), "w"), indent=1)
 PY
+# GitHub Pages apt repo is primary (works without the Hub); Hub upload below is optional
+"$HERE/../publish-gh-apt.sh" "$M/debs/satran_${V}_amd64.deb"
+[ -n "${HUB_SSH:-}" ] || { echo "published $V (GitHub only)"; exit 0; }
 tar -C "$M" --warning=no-file-changed -cf - . | $HUB_SSH 'mkdir -p /var/lib/satra-hub/dl.new && tar -C /var/lib/satra-hub/dl.new -xf - && for k in android; do [ -d /var/lib/satra-hub/dl/$k ] && [ ! -e /var/lib/satra-hub/dl.new/$k ] && cp -a /var/lib/satra-hub/dl/$k /var/lib/satra-hub/dl.new/; done; rm -rf /var/lib/satra-hub/dl.old && { [ -d /var/lib/satra-hub/dl ] && mv /var/lib/satra-hub/dl /var/lib/satra-hub/dl.old || true; } && mv /var/lib/satra-hub/dl.new /var/lib/satra-hub/dl && rm -rf /var/lib/satra-hub/dl.old && chmod -R a+rX /var/lib/satra-hub/dl'
 echo "published $V"

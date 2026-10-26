@@ -1,17 +1,20 @@
 #!/bin/sh
 # SatraN installer (Linux):  curl -fsSL https://raw.githubusercontent.com/gitsatra/SatraN/main/install.sh | sh
-# Uses the Satra Hub apt repository when reachable (so `apt upgrade` updates SatraN); otherwise installs the
-# latest public GitHub release (gitsatra/SatraN). The app also updates itself from the Hub or GitHub.
+# Adds the signed SatraN apt repository on GitHub Pages (so `apt upgrade` updates SatraN); otherwise installs the
+# latest public GitHub release (gitsatra/SatraN). No dependency on Satra Hub.
 set -e
 REPO=gitsatra/SatraN
-HUB=https://p.iivt.ir:2097/satra/dl
-if curl -fsS -m 10 --connect-to p.iivt.ir:2097:107.189.24.195:2097 "$HUB/latest.json" >/dev/null 2>&1; then
-  curl -fsSL --connect-to p.iivt.ir:2097:107.189.24.195:2097 "$HUB/install.sh" | sh
-  exit $?
-fi
-echo "Satra Hub unreachable: installing from GitHub releases ($REPO)"
+APT=https://gitsatra.github.io/SatraN/apt
 SUDO=""; [ "$(id -u)" = 0 ] || SUDO=sudo
 T=$(mktemp -d)
+if command -v apt-get >/dev/null 2>&1 && [ "$(dpkg --print-architecture 2>/dev/null)" = amd64 ] && curl -fsSL -m 30 "$APT/satran-archive.gpg" -o "$T/k.gpg"; then
+  $SUDO install -Dm644 "$T/k.gpg" /usr/share/keyrings/satran-archive.gpg
+  printf '# SatraN updates (signed, GitHub Pages)\ndeb [arch=amd64 signed-by=/usr/share/keyrings/satran-archive.gpg] %s stable main\n' "$APT" | $SUDO tee /etc/apt/sources.list.d/satran.list >/dev/null
+  if $SUDO apt-get update -o Dir::Etc::sourcelist=sources.list.d/satran.list -o Dir::Etc::sourceparts=- -o APT::Get::List-Cleanup=0 && $SUDO apt-get install -y satran; then
+    rm -rf "$T"; echo "SatraN installed. Updates: sudo apt update && sudo apt upgrade (or in-app)."; exit 0
+  fi
+fi
+echo "apt repo unavailable: installing from GitHub releases ($REPO)"
 curl -fsSL "https://api.github.com/repos/$REPO/releases/latest" -o "$T/r.json"
 V=$(sed -n 's/.*"tag_name": *"v\{0,1\}\([^"]*\)".*/\1/p' "$T/r.json" | head -1)
 [ -n "$V" ] || { echo "could not find the latest release"; exit 1; }
